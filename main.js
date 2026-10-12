@@ -2835,7 +2835,6 @@ var RegionEditorModal = class extends import_obsidian.Modal {
     this.svgEl = svgContainer.querySelector("svg");
     if (this.svgEl) {
       this.svgEl.classList.add("anatomy-editor-svg");
-      this.svgEl.style.cursor = "crosshair";
       const hasBgImg = editorContainer.querySelector("img.anatomy-editor-bg-img") !== null;
       if (useUploadViewBox) {
         const vb = this.svgEl.viewBox.baseVal;
@@ -2855,19 +2854,15 @@ var RegionEditorModal = class extends import_obsidian.Modal {
           this.svgEl.setAttribute("preserveAspectRatio", "none");
         }
       }
-      const innerEls = this.svgEl.querySelectorAll("*");
-      innerEls.forEach((el) => {
-        el.style.pointerEvents = "none";
-        if (hasBgImg) {
-          el.style.opacity = "0";
-        }
-      });
-      this.svgEl.style.background = "transparent";
+      if (hasBgImg) {
+        this.svgEl.classList.add("anatomy-has-bg");
+      }
       if (hasBgImg) {
         this.svgEl.classList.add("anatomy-editor-svg-overlay");
       }
-      const overlay = this.svgEl.createSvg("g", { attr: { id: "editor-overlay" } });
+      const overlay = this.svgEl.createSvg("g", { cls: "anatomy-overlay", attr: { id: "editor-overlay" } });
       this.polygonPreview = overlay.createSvg("polygon", {
+        cls: "anatomy-editor-preview",
         attr: {
           fill: "rgba(250, 200, 0, 0.2)",
           stroke: "rgba(250, 200, 0, 0.8)",
@@ -2875,7 +2870,6 @@ var RegionEditorModal = class extends import_obsidian.Modal {
           "stroke-dasharray": "4,2"
         }
       });
-      this.polygonPreview.style.pointerEvents = "none";
       this.pointsGroup = overlay.createSvg("g", { attr: { id: "editor-points" } });
       this.svgEl.addEventListener(
         "click",
@@ -2947,13 +2941,14 @@ var RegionEditorModal = class extends import_obsidian.Modal {
         "points",
         this.points.map((p) => `${p.x},${p.y}`).join(" ")
       );
-      this.polygonPreview.style.display = "";
+      this.polygonPreview.classList.add("is-visible");
     } else {
-      this.polygonPreview.style.display = "none";
+      this.polygonPreview.classList.remove("is-visible");
     }
     this.pointsGroup.replaceChildren();
     this.points.forEach((pt, i) => {
       const c = this.pointsGroup.createSvg("circle", {
+        cls: "anatomy-editor-static",
         attr: {
           cx: String(pt.x),
           cy: String(pt.y),
@@ -2963,8 +2958,8 @@ var RegionEditorModal = class extends import_obsidian.Modal {
           "stroke-width": String(dotStroke)
         }
       });
-      c.style.pointerEvents = "none";
       const t = this.pointsGroup.createSvg("text", {
+        cls: "anatomy-editor-static",
         attr: {
           x: String(pt.x + textOffset),
           y: String(pt.y - textOffset),
@@ -2972,7 +2967,6 @@ var RegionEditorModal = class extends import_obsidian.Modal {
           "font-size": String(fontSize)
         }
       });
-      t.style.pointerEvents = "none";
       t.textContent = String(i + 1);
     });
   }
@@ -3180,11 +3174,7 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
     this.svgEl = svgContainer.querySelector("svg");
     if (this.svgEl) {
       this.svgEl.classList.add("anatomy-editor-svg");
-      this.svgEl.style.cursor = "crosshair";
-      this.svgEl.querySelectorAll("*").forEach((el) => {
-        el.style.pointerEvents = "none";
-      });
-      this.overlay = this.svgEl.createSvg("g", { attr: { id: "annotation-overlay" } });
+      this.overlay = this.svgEl.createSvg("g", { cls: "anatomy-overlay", attr: { id: "annotation-overlay" } });
       this.svgEl.addEventListener(
         "click",
         (e) => this.handleClick(e)
@@ -3255,10 +3245,10 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
     this.overlay.replaceChildren();
     const vb = this.svgEl.viewBox.baseVal;
     const vbShort = Math.min(vb.width, vb.height) || 500;
-    const dotR = Math.min(4, Math.max(1, vbShort * 4e-3));
-    const dotRSelected = Math.min(6, dotR * 1.5);
+    const dotR = Math.min(2, Math.max(0.5, vbShort * 2e-3));
+    const dotRSelected = Math.min(3, dotR * 1.5);
     const dotStroke = Math.max(0.4, dotR * 0.35);
-    const fontSize = Math.min(8, Math.max(5, dotR * 1.6));
+    const fontSize = Math.min(4, Math.max(2.5, dotR * 0.8));
     const textOffset = dotR * 1.6;
     for (const point of this.points) {
       const isSelected = point.id === this.selectedId;
@@ -3272,10 +3262,12 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
           stroke: "#fff",
           "stroke-width": String(dotStroke)
         },
-        cls: isSelected ? "anatomy-annotation-pulse" : void 0
+        // 批次4 Q4-P1：pointer-events/cursor 由 .anatomy-editor-dot CSS 类接管
+        cls: "anatomy-editor-dot"
       });
-      c.style.pointerEvents = "auto";
-      c.style.cursor = "pointer";
+      if (isSelected) {
+        c.classList.add("anatomy-annotation-pulse");
+      }
       c.addEventListener("click", (ev) => {
         ev.stopPropagation();
         this.selectedId = point.id;
@@ -3283,6 +3275,7 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
         this.renderPointList();
       });
       const t = this.overlay.createSvg("text", {
+        cls: "anatomy-editor-static",
         attr: {
           x: String(dx + textOffset),
           y: String(dy - textOffset),
@@ -3290,7 +3283,6 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
           "font-size": String(fontSize)
         }
       });
-      t.style.pointerEvents = "none";
       t.textContent = point.label;
     }
   }
@@ -3427,7 +3419,7 @@ var BackupModal = class extends import_obsidian.Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl("h2", { text: "\u521B\u5EFA\u5907\u4EFD" });
+    new import_obsidian.Setting(contentEl).setName("\u521B\u5EFA\u5907\u4EFD").setHeading();
     contentEl.createEl("p", {
       text: "\u5C06\u5F53\u524D\u6240\u6709\u5206\u533A\u6570\u636E\u3001\u6807\u6CE8\u3001\u7F29\u7565\u56FE\u548C\u6392\u5E8F\u8BBE\u7F6E\u5BFC\u51FA\u4E3A JSON \u5907\u4EFD\u6587\u4EF6\u3002",
       cls: "setting-item-description"
@@ -3453,8 +3445,6 @@ var BackupModal = class extends import_obsidian.Modal {
           text: folder.path,
           cls: "anatomy-folder-suggest-link"
         });
-        btn.style.cursor = "pointer";
-        btn.style.marginRight = "6px";
         btn.addEventListener("click", (e) => {
           e.preventDefault();
           this.folderPath = folder.path;
@@ -3803,9 +3793,9 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
   static async pickAndReadImage(container) {
     return new Promise((resolve) => {
       const input = container.createEl("input", {
+        cls: "anatomy-hidden-input",
         attr: { type: "file", accept: "image/*" }
       });
-      input.style.display = "none";
       input.onchange = async () => {
         var _a;
         const f = (_a = input.files) == null ? void 0 : _a[0];
@@ -3930,7 +3920,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h3", { text: "\u5206\u533A\u7F16\u8F91\u5668" });
+    new import_obsidian.Setting(containerEl).setName("\u5206\u533A\u7F16\u8F91\u5668").setHeading();
     containerEl.createEl("p", {
       text: "\u4E3A\u5404\u89E3\u5256\u533A\u57DF\u7ED8\u5236\u53EF\u70B9\u51FB\u7684\u591A\u8FB9\u5F62\u5206\u533A\u3002\u70B9\u51FB\u300C\u7F16\u8F91\u300D\u6253\u5F00\u53EF\u89C6\u5316\u7F16\u8F91\u5668\uFF0C\u5728\u4EBA\u4F53\u56FE\u4E0A\u70B9\u51FB\u6DFB\u52A0\u9876\u70B9\uFF0C\u76F4\u89C2\u5730\u52FE\u52D2\u533A\u57DF\u8FB9\u754C\u3002",
       cls: "setting-item-description"
@@ -3999,10 +3989,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
         ).open();
       });
     });
-    containerEl.createEl("h4", {
-      text: "\u5206\u533A\u5217\u8868",
-      cls: "anatomy-settings-section-title"
-    });
+    new import_obsidian.Setting(containerEl).setName("\u5206\u533A\u5217\u8868").setHeading().setClass("anatomy-settings-section-title");
     const hidden = new Set(this.plugin.settings.hiddenRegionIds);
     const recycled = new Set(this.plugin.settings.recycledRegionIds);
     const allEntries = [];
@@ -4244,7 +4231,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
         });
       }
     }
-    containerEl.createEl("h3", { text: "\u9009\u70B9\u6807\u6CE8\u7BA1\u7406" });
+    new import_obsidian.Setting(containerEl).setName("\u9009\u70B9\u6807\u6CE8\u7BA1\u7406").setHeading();
     containerEl.createEl("p", {
       text: "\u5728\u5206\u533A\u793A\u610F\u56FE\u4E0A\u6DFB\u52A0\u81EA\u5B9A\u4E49\u6807\u6CE8\u70B9\uFF0C\u6BCF\u4E2A\u70B9\u53EF\u5173\u8054\u4E00\u7BC7\u7B14\u8BB0\u5E76\u8BBE\u7F6E\u56FE\u4F8B\u540D\u3002\u6B64\u529F\u80FD\u72EC\u7ACB\u4E8E frontmatter anatomy \u5B57\u6BB5\u5173\u8054\u3002",
       cls: "setting-item-description"
@@ -4293,7 +4280,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
         ).open();
       });
     }
-    containerEl.createEl("h3", { text: "\u5907\u4EFD\u4E0E\u6062\u590D" });
+    new import_obsidian.Setting(containerEl).setName("\u5907\u4EFD\u4E0E\u6062\u590D").setHeading();
     containerEl.createEl("p", {
       text: "\u5C06\u6240\u6709\u5206\u533A\u6570\u636E\u3001\u6807\u6CE8\u3001\u7F29\u7565\u56FE\u548C\u6392\u5E8F\u8BBE\u7F6E\u5BFC\u51FA\u4E3A JSON \u6587\u4EF6\uFF0C\u6216\u4ECE\u5907\u4EFD\u6587\u4EF6\u6062\u590D\u6570\u636E\u3002",
       cls: "setting-item-description"
@@ -5154,10 +5141,10 @@ var AnatomyMapView = class extends import_obsidian2.ItemView {
       const overlay = svgEl.createSvg("g", { attr: { id: "annotation-overlay" } });
       const vb = svgEl.viewBox.baseVal;
       const vbShort = Math.min(vb.width, vb.height) || 500;
-      const baseR = Math.min(10, Math.max(2, vbShort * 0.01));
+      const baseR = Math.min(5, Math.max(1, vbShort * 5e-3));
       const glowR = baseR * 1.6;
       const strokeW = Math.max(0.6, baseR * 0.3);
-      const fontSize = Math.min(14, Math.max(8, baseR * 3));
+      const fontSize = Math.min(7, Math.max(4, baseR * 1.5));
       const textOffsetX = baseR * 1.6;
       const textOffsetY = baseR * 1.2;
       annotations.forEach((ann, i) => {
@@ -5184,7 +5171,6 @@ var AnatomyMapView = class extends import_obsidian2.ItemView {
             "stroke-width": String(strokeW)
           }
         });
-        circle.style.cursor = "pointer";
         circle.addEventListener("click", (ev) => {
           ev.stopPropagation();
           const paths = ann.notePaths || [];
@@ -5213,6 +5199,7 @@ var AnatomyMapView = class extends import_obsidian2.ItemView {
           menu.showAtMouseEvent(ev);
         });
         const numText = overlay.createSvg("text", {
+          cls: "anatomy-annotation-label",
           attr: {
             x: String(dx + textOffsetX),
             y: String(dy - textOffsetY),
@@ -5221,7 +5208,6 @@ var AnatomyMapView = class extends import_obsidian2.ItemView {
             "font-weight": "bold"
           }
         });
-        numText.style.pointerEvents = "none";
         numText.textContent = `${i + 1}`;
       });
     }

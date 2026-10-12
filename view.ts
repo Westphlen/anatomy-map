@@ -928,10 +928,11 @@ export class AnatomyMapView extends ItemView {
       // 加固 #F2-P4：统一选点尺寸策略——viewBox 短边百分比 + 上下限钳制（二次调小）
       const vb = svgEl.viewBox.baseVal;
       const vbShort = Math.min(vb.width, vb.height) || 500;
-      const baseR = Math.min(10, Math.max(2, vbShort * 0.01));
+      // 批次4 微调：选点直径/编号字号减半（用户 2026-10-12 批示）
+      const baseR = Math.min(5, Math.max(1, vbShort * 0.005));
       const glowR = baseR * 1.6;
       const strokeW = Math.max(0.6, baseR * 0.3);
-      const fontSize = Math.min(14, Math.max(8, baseR * 3));
+      const fontSize = Math.min(7, Math.max(4, baseR * 1.5));
       const textOffsetX = baseR * 1.6;
       const textOffsetY = baseR * 1.2;
 
@@ -964,7 +965,7 @@ export class AnatomyMapView extends ItemView {
             'stroke-width': String(strokeW),
           },
         });
-        circle.style.cursor = 'pointer';
+        // 批次4 Q4-P1：cursor 已由 .anatomy-annotation-point CSS 类接管
 
         // 点击打开关联笔记（多个时弹出菜单）
         circle.addEventListener('click', (ev: MouseEvent) => {
@@ -999,6 +1000,7 @@ export class AnatomyMapView extends ItemView {
 
         // 编号标签（circle 已由 createSvg 追加，无需再 appendChild）
         const numText = overlay.createSvg('text', {
+          cls: 'anatomy-annotation-label',
           attr: {
             x: String(dx + textOffsetX),
             y: String(dy - textOffsetY),
@@ -1007,7 +1009,7 @@ export class AnatomyMapView extends ItemView {
             'font-weight': 'bold',
           },
         });
-        numText.style.pointerEvents = 'none';
+        // 批次4 Q4-P1：pointer-events 已由 .anatomy-annotation-label CSS 类接管
         numText.textContent = `${i + 1}`;
       });
     }

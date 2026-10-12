@@ -7,6 +7,9 @@
 .anatomy-folder-suggest-link {
   font-size: var(--font-ui-smaller);
   color: var(--text-accent);
+  /* 批次4 Q4-P1：迁移自 settings.ts 静态 style */
+  cursor: pointer;
+  margin-right: 6px;
 }
 
 .anatomy-map-container {
@@ -357,6 +360,44 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   background: var(--background-primary);
+  /* 批次4 Q4-P1：迁移自 settings.ts 静态 style */
+  cursor: crosshair;
+  background: transparent;
+}
+
+/* 批次4 Q4-P1：编辑器 SVG 内部底图元素禁止捕获事件（叠加层豁免） */
+.anatomy-editor-svg *:not(.anatomy-overlay):not(.anatomy-overlay *) {
+  pointer-events: none;
+}
+
+/* 批次4 Q4-P1：有底图时隐藏内部底图元素 */
+.anatomy-editor-svg.anatomy-has-bg > *:not(.anatomy-overlay) {
+  opacity: 0;
+}
+
+/* 批次4 Q4-P1：叠加层中的静态装饰元素（多边形预览/顶点/编号）不捕获事件 */
+.anatomy-editor-static {
+  pointer-events: none;
+}
+
+/* 批次4 Q4-P1：多边形预览默认隐藏，可见时显示 */
+.anatomy-editor-preview {
+  display: none;
+  pointer-events: none;
+}
+.anatomy-editor-preview.is-visible {
+  display: block;
+}
+
+/* 批次4 Q4-P1：标注编辑器选点可点击 */
+.anatomy-editor-dot {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* 批次4 Q4-P1：隐藏的文件选择框 */
+.anatomy-hidden-input {
+  display: none;
 }
 
 .anatomy-editor-stack .anatomy-editor-svg {
@@ -737,6 +778,13 @@
 .anatomy-annotation-point {
   transition: r 0.15s ease;
   filter: drop-shadow(0 0 3px rgba(231, 76, 60, 0.5));
+  /* 批次4 Q4-P1：迁移自 view.ts 静态 style */
+  cursor: pointer;
+}
+
+/* 批次4 Q4-P1：标注点编号不捕获事件 */
+.anatomy-annotation-label {
+  pointer-events: none;
 }
 
 .anatomy-annotation-glow {
@@ -747,7 +795,7 @@
 
 @keyframes anatomy-glow-pulse {
   0%, 100% { fill-opacity: 0.15; transform: scale(1); }
-  50% { fill-opacity: 0.35; transform: scale(1.25); }
+  50% { fill-opacity: 0.35; transform: scale(1.125); } /* 批次4 微调：动画范围减半 */
 }
 
 /* 图例列表（仿分区-笔记列表） */
@@ -1026,7 +1074,7 @@
 
 @keyframes anatomy-editor-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.8; transform: scale(1.2); }
+  50% { opacity: 0.8; transform: scale(1.1); } /* 批次4 微调：动画范围减半 */
 }
 
 /* 编辑器列表中选中行高亮 */

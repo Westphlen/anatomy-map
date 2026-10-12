@@ -1,0 +1,1265 @@
+/* Anatomy Map Plugin Styles */
+
+/* 备份 Modal 文件夹快捷链接 */
+.anatomy-backup-folder-hint {
+  margin-top: 4px;
+}
+.anatomy-folder-suggest-link {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-accent);
+}
+
+.anatomy-map-container {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* 标题 */
+.anatomy-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 0 10px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 8px;
+}
+
+.anatomy-title {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+/* 三视图切换 */
+.anatomy-view-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.anatomy-view-btn {
+  flex: 1;
+  padding: 4px 8px;
+  border: none;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-right: 1px solid var(--background-modifier-border);
+}
+
+.anatomy-view-btn:last-child {
+  border-right: none;
+}
+
+.anatomy-view-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.anatomy-view-btn.active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+/* 面包屑 */
+.anatomy-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 8px;
+}
+
+.anatomy-back-btn {
+  background: none;
+  border: none;
+  color: var(--text-accent);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.anatomy-back-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.anatomy-breadcrumb-current {
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.anatomy-breadcrumb-link {
+  background: none;
+  border: none;
+  color: var(--text-accent);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  padding: 2px 4px;
+}
+
+.anatomy-breadcrumb-link:hover {
+  text-decoration: underline;
+}
+
+.anatomy-breadcrumb-sep {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+/* SVG容器 */
+.anatomy-svg-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 4px 0;
+  margin-bottom: 8px;
+}
+
+.anatomy-svg {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  /* 加固 #F2-P3：阻断 Obsidian 主题对插件 SVG 的 invert/hue-rotate 等滤镜，
+     避免人体器官填色被反转为紫色/荧光色 */
+  filter: none !important;
+  color-scheme: light;
+}
+
+/* 外轮廓 - 柔和矢量线条 */
+.anatomy-svg .body-outline {
+  fill: var(--background-modifier-hover);
+  fill-opacity: 0.15;
+  stroke: var(--text-muted);
+  stroke-width: 0.3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* SVG区域样式 - 隐形但可点击 */
+.anatomy-svg .region,
+.anatomy-svg .region path,
+.anatomy-svg .region polygon,
+.anatomy-svg .region rect,
+.anatomy-svg .region ellipse,
+.anatomy-svg .region circle {
+  cursor: pointer;
+  transition: all 0.15s ease;
+  pointer-events: visiblePainted;
+}
+
+/* 加固 #F2-P3：删除 SVG 区域悬停显示逻辑，避免 filter 与主题叠加产生紫色荧光 */
+
+.anatomy-svg .spine-line {
+  stroke: var(--text-muted);
+  stroke-width: 0.5;
+  stroke-dasharray: 2, 2;
+  opacity: 0.4;
+}
+
+.anatomy-svg .spine-region {
+  opacity: 0.3;
+}
+
+.anatomy-svg .region-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+  text-anchor: middle;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* 统计 */
+.anatomy-stats {
+  text-align: center;
+  padding: 4px 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+/* 笔记列表 */
+.anatomy-note-list-container {
+  flex: 1 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.anatomy-note-list {
+  width: 100%;
+  padding: 6px 0;
+  box-sizing: border-box;
+}
+
+/* 双列布局容器（JS 实现，先左后右） */
+.anatomy-two-col {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.anatomy-note-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.anatomy-note-group {
+  margin-bottom: 4px;
+}
+
+.anatomy-note-group-title {
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-accent);
+  padding: 4px 0 2px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.anatomy-note-group-items {
+  margin-top: 2px;
+}
+
+.anatomy-note-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.anatomy-note-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.anatomy-note-name {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.anatomy-note-index {
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: 4px;
+  min-width: 18px;
+  text-align: right;
+}
+
+.anatomy-note-item:hover .anatomy-note-name {
+  color: var(--text-accent);
+}
+
+/* 空状态提示 */
+.anatomy-empty-hint,
+.anatomy-hint {
+  text-align: center;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+
+/* ════════ 分区编辑器 Modal ════════ */
+
+.anatomy-region-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.anatomy-editor-hint {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 480px;
+  margin: 0;
+}
+
+.anatomy-editor-svg-wrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.anatomy-editor-stack {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  overflow: hidden;
+}
+
+.anatomy-editor-stack > div,
+.anatomy-editor-stack > svg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  border: none !important;
+}
+
+.anatomy-editor-bg-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  z-index: 1;
+}
+
+.anatomy-editor-overlay-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.anatomy-editor-svg {
+  width: 100%;
+  max-width: 500px;
+  height: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+}
+
+.anatomy-editor-stack .anatomy-editor-svg {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+
+.anatomy-editor-stack .anatomy-editor-svg-overlay {
+  background: transparent !important;
+}
+
+.anatomy-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.anatomy-editor-count {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  min-width: 80px;
+}
+
+/* ════════ 设置面板徽章 ════════ */
+
+.anatomy-badge-built-in {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.anatomy-badge-custom {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.anatomy-settings-section-title {
+  margin: 16px 0 4px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+}
+
+.anatomy-add-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  margin: 4px 0;
+  padding: 0;
+}
+
+.anatomy-confirm-message {
+  margin: 8px 0 16px 0;
+  font-size: var(--font-ui-normal);
+  line-height: 1.5;
+}
+
+.anatomy-confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ════════ 折叠/展开 ════════ */
+
+.anatomy-collapse-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 6px 4px;
+  margin: 16px 0 4px 0;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+  user-select: none;
+}
+
+.anatomy-collapse-header:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* 小倒三角 - 使用 CSS border 绘制 */
+.anatomy-collapse-triangle {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+/* 折叠状态：三角朝下 (▼) */
+.anatomy-triangle-collapsed {
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--text-muted);
+  transform: rotate(0deg);
+}
+
+/* 展开状态：三角朝上 (▲) - 通过旋转实现 */
+.anatomy-triangle-expanded {
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--text-muted);
+  transform: rotate(-180deg);
+}
+
+/* 折叠头部内的 section 标题，去掉自带的 margin/border */
+.anatomy-collapse-header .anatomy-settings-section-title {
+  margin: 0;
+  padding: 0;
+  border: none;
+  flex: 1;
+}
+
+/* 回收站全部删除按钮 */
+.anatomy-recycle-clear-all-btn {
+  font-size: 12px;
+  padding: 2px 10px;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+/* 折叠内容容器 */
+.anatomy-collapse-content {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  max-height: 2000px;
+  opacity: 1;
+}
+
+/* 折叠内容隐藏状态 */
+.anatomy-collapse-hidden {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 已隐藏分区列表 - 独立滚动容器（不影响设置页面滚动条） */
+.anatomy-hidden-regions-content {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 8px;
+  /* 细滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--background-modifier-border) transparent;
+}
+.anatomy-hidden-regions-content::-webkit-scrollbar {
+  width: 8px;
+}
+.anatomy-hidden-regions-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.anatomy-hidden-regions-content::-webkit-scrollbar-thumb {
+  background-color: var(--background-modifier-border);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.anatomy-hidden-regions-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
+
+/* ── 分区示意图（设置面板） ── */
+.anatomy-thumb-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+.anatomy-thumb-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+.anatomy-thumb-empty {
+  opacity: 0.9;
+}
+.anatomy-thumb-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.anatomy-thumb-tag {
+  align-self: flex-start;
+}
+.anatomy-thumb-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.anatomy-thumb-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  line-height: 1.4;
+}
+
+/* ── 分区示意图（视图层 - 区域头部） ── */
+.anatomy-region-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  margin: 8px 0 12px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+}
+.anatomy-region-thumb {
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  display: block;
+}
+.anatomy-region-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-normal);
+  padding: 0 4px;
+}
+
+/* ── 子区域卡片（纯文字） ── */
+.anatomy-subregion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.anatomy-subregion-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
+  color: var(--text-normal);
+  text-align: center;
+  font-size: var(--font-ui-smaller);
+  position: relative;
+}
+.anatomy-subregion-btn:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+  transform: translateY(-1px);
+}
+.anatomy-subregion-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  word-break: break-word;
+  line-height: 1.3;
+}
+.anatomy-subregion-count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+/* ════════ 深层分区（总图被遮盖的独立分区） ════════ */
+
+.anatomy-deep-regions {
+  margin: 8px 0 4px 0;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.anatomy-deep-regions-title {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-normal);
+  margin-bottom: 2px;
+}
+
+.anatomy-deep-regions-hint {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin: 0 0 6px 0;
+  padding: 0;
+}
+
+/* ════════ 选点标注（视图层） ════════ */
+
+.anatomy-annotation-section {
+  margin: 8px 0 12px 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  padding: 8px;
+}
+
+.anatomy-annotation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.anatomy-annotation-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.anatomy-annotation-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.anatomy-annotation-edit-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+/* 标注SVG */
+.anatomy-annotation-svg-wrapper {
+  display: flex;
+  justify-content: center;
+  padding: 2px 0;
+  margin-bottom: 6px;
+}
+
+.anatomy-annotation-svg {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+}
+
+/* 标注点 */
+.anatomy-annotation-point {
+  transition: r 0.15s ease;
+  filter: drop-shadow(0 0 3px rgba(231, 76, 60, 0.5));
+}
+
+.anatomy-annotation-glow {
+  animation: anatomy-glow-pulse 2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes anatomy-glow-pulse {
+  0%, 100% { fill-opacity: 0.15; transform: scale(1); }
+  50% { fill-opacity: 0.35; transform: scale(1.25); }
+}
+
+/* 图例列表（仿分区-笔记列表） */
+.anatomy-annotation-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.anatomy-annotation-legend-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.anatomy-annotation-legend-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 2px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.anatomy-annotation-legend-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 3px rgba(0,0,0,0.2);
+}
+
+.anatomy-annotation-legend-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-accent);
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.anatomy-annotation-legend-input:focus {
+  border-color: var(--interactive-accent);
+  background: var(--background-primary);
+}
+
+.anatomy-annotation-legend-input:hover {
+  background: var(--background-modifier-hover);
+}
+
+.anatomy-annotation-legend-notes {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.anatomy-annotation-legend-note-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.anatomy-annotation-legend-note-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.anatomy-annotation-legend-note-index {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: 4px;
+  min-width: 18px;
+  text-align: right;
+}
+
+.anatomy-annotation-legend-note-name {
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.anatomy-annotation-legend-note-item:hover .anatomy-annotation-legend-note-name {
+  color: var(--text-accent);
+}
+
+.anatomy-annotation-legend-note-empty {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  padding: 4px 8px;
+  font-style: italic;
+}
+
+/* ════════ 选点标注编辑器 Modal ════════ */
+
+.anatomy-annotation-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.anatomy-annotation-list {
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.anatomy-annotation-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.anatomy-annotation-row-warning {
+  border-color: var(--text-error);
+  background: rgba(231, 76, 60, 0.05);
+}
+
+.anatomy-annotation-row-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.anatomy-annotation-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.anatomy-annotation-del-btn {
+  font-size: 12px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+.anatomy-annotation-label-input {
+  flex: 1;
+  min-width: 60px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.anatomy-annotation-label-input:focus {
+  border-color: var(--interactive-accent);
+  background: var(--background-primary);
+}
+
+.anatomy-annotation-notes-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 2px;
+}
+
+.anatomy-annotation-note-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.1s ease;
+}
+
+.anatomy-annotation-note-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.anatomy-annotation-note-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anatomy-annotation-note-remove {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.anatomy-annotation-note-remove:hover {
+  background: var(--text-error);
+  color: #fff;
+}
+
+.anatomy-annotation-add-note-btn {
+  align-self: flex-start;
+  font-size: var(--font-ui-smaller);
+  padding: 3px 10px;
+  margin-top: 2px;
+  color: var(--text-accent);
+}
+
+.anatomy-annotation-note-empty {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  padding: 4px 8px;
+  font-style: italic;
+}
+
+.anatomy-annotation-editor-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  margin: 4px 0;
+  padding: 0;
+}
+
+/* 编辑器中选中标注的脉冲动画 */
+.anatomy-annotation-pulse {
+  animation: anatomy-editor-pulse 1.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes anatomy-editor-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.2); }
+}
+
+/* 编辑器列表中选中行高亮 */
+.anatomy-annotation-row-selected {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+/* ── 排序模式样式 ── */
+
+/* 排序按钮 */
+.anatomy-annotation-sort-btn,
+.anatomy-note-sort-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.anatomy-annotation-sort-btn.is-active,
+.anatomy-note-sort-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* ── Codeblock 小地图 ── */
+
+.anatomy-codeblock-map {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+  background: var(--background-secondary);
+}
+
+.anatomy-codeblock-header {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--background-modifier-hover);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.anatomy-codeblock-title {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.anatomy-codeblock-svg {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 8px;
+}
+
+.anatomy-codeblock-svg svg {
+  max-width: 300px;
+  width: 100%;
+  height: auto;
+}
+
+.anatomy-codeblock-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.anatomy-codeblock-clickable:hover {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.anatomy-codeblock-glow {
+  animation: anatomy-codeblock-pulse 2s ease-in-out infinite;
+}
+
+@keyframes anatomy-codeblock-pulse {
+  0%, 100% { fill-opacity: 0.2; }
+  50% { fill-opacity: 0.45; }
+}
+
+.anatomy-codeblock-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* 添加关联 / 删除关联 按钮 */
+.anatomy-note-add-btn,
+.anatomy-note-remove-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.anatomy-note-add-btn.is-active {
+  background: var(--color-green, #2ecc71);
+  color: var(--text-on-accent);
+}
+
+.anatomy-note-remove-btn.is-active {
+  background: var(--color-red, #e74c3c);
+  color: var(--text-on-accent);
+}
+
+/* 笔记列表按钮组 */
+.anatomy-note-list-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 笔记列表标题栏 */
+.anatomy-note-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 2px 0;
+}
+
+.anatomy-note-list-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+/* 拖拽手柄 */
+.anatomy-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.anatomy-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* ── 添加关联模式 ── */
+
+.anatomy-note-add-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.anatomy-note-add-search {
+  width: 100%;
+  font-size: var(--font-ui-smaller);
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  box-sizing: border-box;
+}
+
+.anatomy-note-add-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.anatomy-note-add-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.anatomy-note-add-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.anatomy-note-add-icon {
+  color: var(--color-green, #2ecc71);
+  font-size: 16px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+/* ── 删除关联模式 ── */
+
+.anatomy-remove-mode .anatomy-note-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  background: var(--background-primary);
+}
+
+.anatomy-note-remove-item-btn {
+  background: none;
+  border: none;
+  color: var(--color-red, #e74c3c);
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.anatomy-note-remove-item-btn:hover {
+  color: var(--text-error);
+}
+
+/* 排序模式下的可拖拽项 */
+.anatomy-sort-mode .anatomy-annotation-legend-item,
+.anatomy-sort-mode .anatomy-note-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  background: var(--background-primary);
+}
+
+/* 拖拽中的项 */
+.anatomy-dragging {
+  opacity: 0.4;
+}
+
+/* 拖拽悬停目标 */
+.anatomy-drag-over {
+  border-color: var(--interactive-accent) !important;
+  background: var(--background-modifier-hover) !important;
+}

@@ -340,8 +340,8 @@ class RegionEditorModal extends Modal {
     this.svgEl = svgContainer.querySelector('svg');
 
     if (this.svgEl) {
+      // 批次4 Q4-P1：cursor 已由 .anatomy-editor-svg CSS 类接管
       this.svgEl.classList.add('anatomy-editor-svg');
-      this.svgEl.style.cursor = 'crosshair';
 
       // 是否有底图（upload / auto）
       const hasBgImg = editorContainer.querySelector('img.anatomy-editor-bg-img') !== null;
@@ -365,26 +365,25 @@ class RegionEditorModal extends Modal {
         }
       }
 
-      // 2) 处理 body SVG 内部元素（pointer-events + 有底图时隐藏）
-      const innerEls = this.svgEl.querySelectorAll('*');
-      innerEls.forEach((el) => {
-        (el as SVGElement).style.pointerEvents = 'none';
-        if (hasBgImg) {
-          (el as SVGElement).style.opacity = '0';
-        }
-      });
+      // 2) 批次4 Q4-P1：内部元素 pointer-events/opacity 改由 CSS 类接管
+      //    .anatomy-editor-svg *:not(.anatomy-overlay *) { pointer-events: none }
+      //    .anatomy-has-bg > *:not(.anatomy-overlay) { opacity: 0 }
+      if (hasBgImg) {
+        this.svgEl.classList.add('anatomy-has-bg');
+      }
 
-      // 3) SVG 根元素保持点击捕获+透明背景（即使有底图也作为事件捕获层）
-      this.svgEl.style.background = 'transparent';
+      // 3) 批次4 Q4-P1：透明背景已由 .anatomy-editor-svg CSS 类接管
       if (hasBgImg) {
         this.svgEl.classList.add('anatomy-editor-svg-overlay');
       }
 
       // 创建叠加层（加固 #Q3-P4【S2】：createSvg 替代 createElementNS，创建即追加）
-      const overlay = this.svgEl.createSvg('g', { attr: { id: 'editor-overlay' } });
+      // 批次4 Q4-P1：anatomy-overlay 类豁免内部元素事件屏蔽
+      const overlay = this.svgEl.createSvg('g', { cls: 'anatomy-overlay', attr: { id: 'editor-overlay' } });
 
-      // 多边形预览
+      // 多边形预览（批次4 Q4-P1：pointer-events/display 由 .anatomy-editor-preview CSS 类接管）
       this.polygonPreview = overlay.createSvg('polygon', {
+        cls: 'anatomy-editor-preview',
         attr: {
           fill: 'rgba(250, 200, 0, 0.2)',
           stroke: 'rgba(250, 200, 0, 0.8)',
@@ -392,7 +391,6 @@ class RegionEditorModal extends Modal {
           'stroke-dasharray': '4,2',
         },
       });
-      this.polygonPreview.style.pointerEvents = 'none';
 
       // 顶点标记组
       this.pointsGroup = overlay.createSvg('g', { attr: { id: 'editor-points' } });
@@ -481,9 +479,10 @@ class RegionEditorModal extends Modal {
         'points',
         this.points.map((p) => `${p.x},${p.y}`).join(' '),
       );
-      this.polygonPreview.style.display = '';
+      // 批次4 Q4-P1：display 切换改 classList
+      this.polygonPreview.classList.add('is-visible');
     } else {
-      this.polygonPreview.style.display = 'none';
+      this.polygonPreview.classList.remove('is-visible');
     }
 
     // 顶点圆点 + 编号
@@ -491,7 +490,9 @@ class RegionEditorModal extends Modal {
     this.pointsGroup.replaceChildren();
     this.points.forEach((pt, i) => {
       // 加固 #Q3-P4【S2】：createSvg 创建即追加到 pointsGroup
+      // 批次4 Q4-P1：pointer-events 由 .anatomy-editor-static CSS 类接管
       const c = this.pointsGroup!.createSvg('circle', {
+        cls: 'anatomy-editor-static',
         attr: {
           cx: String(pt.x),
           cy: String(pt.y),
@@ -501,9 +502,9 @@ class RegionEditorModal extends Modal {
           'stroke-width': String(dotStroke),
         },
       });
-      c.style.pointerEvents = 'none';
 
       const t = this.pointsGroup!.createSvg('text', {
+        cls: 'anatomy-editor-static',
         attr: {
           x: String(pt.x + textOffset),
           y: String(pt.y - textOffset),
@@ -511,7 +512,6 @@ class RegionEditorModal extends Modal {
           'font-size': String(fontSize),
         },
       });
-      t.style.pointerEvents = 'none';
       t.textContent = String(i + 1);
     });
   }
@@ -806,16 +806,14 @@ export class PointAnnotationEditorModal extends Modal {
     this.svgEl = svgContainer.querySelector('svg');
 
     if (this.svgEl) {
+      // 批次4 Q4-P1：cursor 已由 .anatomy-editor-svg CSS 类接管
       this.svgEl.classList.add('anatomy-editor-svg');
-      this.svgEl.style.cursor = 'crosshair';
 
-      // 禁用所有子元素的 pointer-events，确保点击直达 SVG 根
-      this.svgEl.querySelectorAll('*').forEach((el) => {
-        (el as SVGElement).style.pointerEvents = 'none';
-      });
+      // 批次4 Q4-P1：内部元素 pointer-events 已由 .anatomy-editor-svg CSS 选择器接管
 
       // 创建叠加层 <g> 用于渲染标注点（加固 #Q3-P4【S2】：createSvg 创建即追加）
-      this.overlay = this.svgEl.createSvg('g', { attr: { id: 'annotation-overlay' } });
+      // 批次4 Q4-P1：anatomy-overlay 类豁免内部元素事件屏蔽
+      this.overlay = this.svgEl.createSvg('g', { cls: 'anatomy-overlay', attr: { id: 'annotation-overlay' } });
 
       // 点击添加/选择标注点
       this.svgEl.addEventListener('click', (e: MouseEvent) =>
@@ -902,10 +900,11 @@ export class PointAnnotationEditorModal extends Modal {
     // 加固 #F2-P4：统一选点尺寸策略——viewBox 短边百分比 + 上下限钳制（二次调小）
     const vb = this.svgEl.viewBox.baseVal;
     const vbShort = Math.min(vb.width, vb.height) || 500;
-    const dotR = Math.min(4, Math.max(1, vbShort * 0.004));
-    const dotRSelected = Math.min(6, dotR * 1.5);
+    // 批次4 微调：选点直径/字号减半（用户 2026-10-12 批示）
+    const dotR = Math.min(2, Math.max(0.5, vbShort * 0.002));
+    const dotRSelected = Math.min(3, dotR * 1.5);
     const dotStroke = Math.max(0.4, dotR * 0.35);
-    const fontSize = Math.min(8, Math.max(5, dotR * 1.6));
+    const fontSize = Math.min(4, Math.max(2.5, dotR * 0.8));
     const textOffset = dotR * 1.6;
 
     for (const point of this.points) {
@@ -922,10 +921,13 @@ export class PointAnnotationEditorModal extends Modal {
           stroke: '#fff',
           'stroke-width': String(dotStroke),
         },
-        cls: isSelected ? 'anatomy-annotation-pulse' : undefined,
+        // 批次4 Q4-P1：pointer-events/cursor 由 .anatomy-editor-dot CSS 类接管
+        cls: 'anatomy-editor-dot',
       });
-      c.style.pointerEvents = 'auto';
-      c.style.cursor = 'pointer';
+      // 批次4 Q4-P1 自纠：createSvg cls 不接受空格多类名，选中态脉冲类单独 add
+      if (isSelected) {
+        c.classList.add('anatomy-annotation-pulse');
+      }
       c.addEventListener('click', (ev: MouseEvent) => {
         ev.stopPropagation();
         this.selectedId = point.id;
@@ -934,6 +936,7 @@ export class PointAnnotationEditorModal extends Modal {
       });
 
       const t = this.overlay.createSvg('text', {
+        cls: 'anatomy-editor-static',
         attr: {
           x: String(dx + textOffset),
           y: String(dy - textOffset),
@@ -941,7 +944,6 @@ export class PointAnnotationEditorModal extends Modal {
           'font-size': String(fontSize),
         },
       });
-      t.style.pointerEvents = 'none';
       t.textContent = point.label;
     }
   }
@@ -1097,7 +1099,8 @@ class BackupModal extends Modal {
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl('h2', { text: '创建备份' });
+    // 批次4 Q4-P2：heading 改用 Setting.setHeading
+    new Setting(contentEl).setName('创建备份').setHeading();
     contentEl.createEl('p', {
       text: '将当前所有分区数据、标注、缩略图和排序设置导出为 JSON 备份文件。',
       cls: 'setting-item-description',
@@ -1129,8 +1132,7 @@ class BackupModal extends Modal {
           text: folder.path,
           cls: 'anatomy-folder-suggest-link',
         });
-        btn.style.cursor = 'pointer';
-        btn.style.marginRight = '6px';
+        // 批次4 Q4-P1：cursor/marginRight 已由 CSS 类接管
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           this.folderPath = folder.path;
@@ -1530,9 +1532,10 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
     return new Promise((resolve) => {
       // 加固 #Q3-P4【S2】：container.createEl 替代 document.createElement（创建即追加到 container）
       const input = container.createEl('input', {
+        cls: 'anatomy-hidden-input',
         attr: { type: 'file', accept: 'image/*' },
       });
-      input.style.display = 'none';
+      // 批次4 Q4-P1：display 已由 .anatomy-hidden-input CSS 类接管
       input.onchange = async () => {
         const f = input.files?.[0];
         input.remove();
@@ -1682,7 +1685,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h3', { text: '分区编辑器' });
+    // 批次4 Q4-P2：heading 改用 Setting.setHeading（官方审核规范）
+    new Setting(containerEl).setName('分区编辑器').setHeading();
     containerEl.createEl('p', {
       text:
         '为各解剖区域绘制可点击的多边形分区。点击「编辑」打开可视化编辑器，在人体图上点击添加顶点，直观地勾勒区域边界。',
@@ -1767,10 +1771,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
       });
 
     // ── 分区列表（统一显示所有分区）──
-    containerEl.createEl('h4', {
-      text: '分区列表',
-      cls: 'anatomy-settings-section-title',
-    });
+    // 批次4 Q4-P2：heading 改用 Setting.setHeading
+    new Setting(containerEl).setName('分区列表').setHeading().setClass('anatomy-settings-section-title');
 
     const hidden = new Set(this.plugin.settings.hiddenRegionIds);
     const recycled = new Set(this.plugin.settings.recycledRegionIds);
@@ -2066,7 +2068,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
     }
 
     // ── 选点标注管理 ──
-    containerEl.createEl('h3', { text: '选点标注管理' });
+    // 批次4 Q4-P2：heading 改用 Setting.setHeading
+    new Setting(containerEl).setName('选点标注管理').setHeading();
     containerEl.createEl('p', {
       text: '在分区示意图上添加自定义标注点，每个点可关联一篇笔记并设置图例名。此功能独立于 frontmatter anatomy 字段关联。',
       cls: 'setting-item-description',
@@ -2126,7 +2129,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
 
     // ── 备份与恢复 ──
 
-    containerEl.createEl('h3', { text: '备份与恢复' });
+    // 批次4 Q4-P2：heading 改用 Setting.setHeading
+    new Setting(containerEl).setName('备份与恢复').setHeading();
     containerEl.createEl('p', {
       text: '将所有分区数据、标注、缩略图和排序设置导出为 JSON 文件，或从备份文件恢复数据。',
       cls: 'setting-item-description',
