@@ -1,7 +1,7 @@
 {
   "id": "anatomy-map",
   "name": "Anatomy Map",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "minAppVersion": "1.4.4",
   "description": "Interactive 2D human body map in the sidebar. Click anatomical regions to find related notes via frontmatter anatomy field.",
   "author": "漫云湖",

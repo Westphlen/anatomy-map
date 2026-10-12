@@ -5682,16 +5682,25 @@ var AnatomyMapPlugin = class extends import_obsidian3.Plugin {
       const annotations = settings.pointAnnotations.filter((a) => a.regionId === regionId);
       const svgRoot = svgWrapper.querySelector("svg");
       if (svgRoot && annotations.length > 0) {
+        const vb = svgRoot.viewBox.baseVal;
+        const vbShort = Math.min(vb.width || 500, vb.height || 500);
+        const baseR = Math.min(5, Math.max(1, vbShort * 5e-3));
+        const fontSize = Math.min(7, Math.max(4, baseR * 1.5));
+        const textOffset = baseR * 1.2;
         const colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22", "#e91e63"];
         annotations.forEach((ann, i) => {
           const color = colors[i % colors.length];
           const [dx, dy] = annSvg.fromBody(ann.x, ann.y);
           const isCurrentNote = (ann.notePaths || []).includes(notePath);
+          const scale = isCurrentNote ? 1 : 0.67;
+          const glowR = baseR * 1.6 * scale;
+          const dotR = baseR * scale;
+          const strokeW = Math.max(0.6, baseR * 0.3 * scale);
           svgRoot.createSvg("circle", {
             attr: {
               cx: String(dx),
               cy: String(dy),
-              r: isCurrentNote ? "12" : "8",
+              r: String(glowR),
               fill: color,
               "fill-opacity": isCurrentNote ? "0.3" : "0.15"
             },
@@ -5701,20 +5710,20 @@ var AnatomyMapPlugin = class extends import_obsidian3.Plugin {
             attr: {
               cx: String(dx),
               cy: String(dy),
-              r: isCurrentNote ? "6" : "4",
+              r: String(dotR),
               fill: color,
               stroke: "#fff",
-              "stroke-width": isCurrentNote ? "2.5" : "1.5"
+              "stroke-width": String(strokeW)
             },
             cls: isCurrentNote ? "anatomy-codeblock-point-active" : void 0
           });
           if (isCurrentNote) {
             const text = svgRoot.createSvg("text", {
               attr: {
-                x: String(dx + 10),
-                y: String(dy + 5),
+                x: String(dx + textOffset),
+                y: String(dy + textOffset * 0.5),
                 fill: color,
-                "font-size": "14",
+                "font-size": String(fontSize),
                 "font-weight": "600"
               }
             });
