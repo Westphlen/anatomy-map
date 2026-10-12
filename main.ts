@@ -157,11 +157,11 @@ export default class AnatomyMapPlugin extends Plugin {
       // 加固 #Q3-P4【S2】：querySelector 显式泛型 + createSvg 替代 document.createElementNS
       const svgRoot = svgWrapper.querySelector<SVGSVGElement>('svg');
       if (svgRoot && annotations.length > 0) {
-        // v1.2.2：选点尺寸改为 viewBox 短边动态计算（与主界面缩略图对齐）
+        // v1.2.2：选点尺寸改为 viewBox 短边动态计算（与主界面缩略图对齐；2026-10-12 用户批示增大一倍）
         const vb = svgRoot.viewBox.baseVal;
         const vbShort = Math.min(vb.width || 500, vb.height || 500);
-        const baseR = Math.min(5, Math.max(1, vbShort * 0.005));
-        const fontSize = Math.min(7, Math.max(4, baseR * 1.5));
+        const baseR = Math.min(10, Math.max(2, vbShort * 0.01));
+        const fontSize = Math.min(14, Math.max(8, baseR * 1.5));
         const textOffset = baseR * 1.2;
 
         const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#e91e63'];

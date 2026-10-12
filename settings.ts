@@ -900,11 +900,11 @@ export class PointAnnotationEditorModal extends Modal {
     // 加固 #F2-P4：统一选点尺寸策略——viewBox 短边百分比 + 上下限钳制（二次调小）
     const vb = this.svgEl.viewBox.baseVal;
     const vbShort = Math.min(vb.width, vb.height) || 500;
-    // 批次4 微调：选点直径/字号减半（用户 2026-10-12 批示）
-    const dotR = Math.min(2, Math.max(0.5, vbShort * 0.002));
-    const dotRSelected = Math.min(3, dotR * 1.5);
+    // 批次4 微调：选点直径/字号增大一倍（用户 2026-10-12 批示）
+    const dotR = Math.min(4, Math.max(1, vbShort * 0.004));
+    const dotRSelected = Math.min(6, dotR * 1.5);
     const dotStroke = Math.max(0.4, dotR * 0.35);
-    const fontSize = Math.min(4, Math.max(2.5, dotR * 0.8));
+    const fontSize = Math.min(8, Math.max(5, dotR * 0.8));
     const textOffset = dotR * 1.6;
 
     for (const point of this.points) {

@@ -1473,10 +1473,10 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
     this.overlay.replaceChildren();
     const vb = this.svgEl.viewBox.baseVal;
     const vbShort = Math.min(vb.width, vb.height) || 500;
-    const dotR = Math.min(2, Math.max(0.5, vbShort * 2e-3));
-    const dotRSelected = Math.min(3, dotR * 1.5);
+    const dotR = Math.min(4, Math.max(1, vbShort * 4e-3));
+    const dotRSelected = Math.min(6, dotR * 1.5);
     const dotStroke = Math.max(0.4, dotR * 0.35);
-    const fontSize = Math.min(4, Math.max(2.5, dotR * 0.8));
+    const fontSize = Math.min(8, Math.max(5, dotR * 0.8));
     const textOffset = dotR * 1.6;
     for (const point of this.points) {
       const isSelected = point.id === this.selectedId;
@@ -3369,10 +3369,10 @@ var AnatomyMapView = class extends import_obsidian2.ItemView {
       const overlay = svgEl.createSvg("g", { attr: { id: "annotation-overlay" } });
       const vb = svgEl.viewBox.baseVal;
       const vbShort = Math.min(vb.width, vb.height) || 500;
-      const baseR = Math.min(5, Math.max(1, vbShort * 5e-3));
+      const baseR = Math.min(10, Math.max(2, vbShort * 0.01));
       const glowR = baseR * 1.6;
       const strokeW = Math.max(0.6, baseR * 0.3);
-      const fontSize = Math.min(7, Math.max(4, baseR * 1.5));
+      const fontSize = Math.min(14, Math.max(8, baseR * 1.5));
       const textOffsetX = baseR * 1.6;
       const textOffsetY = baseR * 1.2;
       annotations.forEach((ann, i) => {
@@ -3912,8 +3912,8 @@ var AnatomyMapPlugin = class extends import_obsidian3.Plugin {
       if (svgRoot && annotations.length > 0) {
         const vb = svgRoot.viewBox.baseVal;
         const vbShort = Math.min(vb.width || 500, vb.height || 500);
-        const baseR = Math.min(5, Math.max(1, vbShort * 5e-3));
-        const fontSize = Math.min(7, Math.max(4, baseR * 1.5));
+        const baseR = Math.min(10, Math.max(2, vbShort * 0.01));
+        const fontSize = Math.min(14, Math.max(8, baseR * 1.5));
         const textOffset = baseR * 1.2;
         const colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22", "#e91e63"];
         annotations.forEach((ann, i) => {
