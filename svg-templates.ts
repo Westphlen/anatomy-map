@@ -4,6 +4,9 @@
  * 本文件包含人体解剖SVG模板，由bioart彩色SVG转换而成
  */
 
+// 加固 #Q2-P1【S1】：引入属性转义工具，用户多边形拼接点收口
+import { escapeSvgAttr } from './dom-safe';
+
 // 全身图SVG（正面视图）
 const bodySVG = `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:i="http://ns.adobe.com/AdobeIllustrator/10.0/" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 500 500">
   <defs>
@@ -2367,8 +2370,9 @@ export function getBodySVG(
         return isTopLevel;
       })
       .map((p) => {
-        const pts = p.points.map((pt) => `${pt.x},${pt.y}`).join(' ');
-        return `<g class="region" data-region="${p.regionId}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
+        // 加固 #Q2-P1【S1】：pts 数字强转 + regionId 属性转义，阻断模板注入
+        const pts = p.points.map((pt) => `${Number(pt.x)},${Number(pt.y)}`).join(' ');
+        return `<g class="region" data-region="${escapeSvgAttr(p.regionId)}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
       })
       .join('\n');
 

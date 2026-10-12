@@ -3,10 +3,12 @@
  * 允许用户在人体图上直观绘制多边形分区（类抠图形式）
  */
 
-import { App, Modal, Setting, PluginSettingTab, TFile, TFolder, FuzzySuggestModal, Notice } from 'obsidian';
+import { App, Modal, Plugin, Setting, PluginSettingTab, TFile, TFolder, FuzzySuggestModal, Notice } from 'obsidian';
 import { BODY_REGIONS, AnatomyRegion, flattenAllRegions, findRegion } from './anatomy-data';
 import { getBodySVG, getRegionSVG } from './svg-templates';
 import { getAnnotationSVG, AnnotationSVGResult } from './view';
+// 加固 #Q2-P1【S1】：引入 DOM 安全写入工具与 dataUrl 白名单
+import { renderSvgInto, isImageDataUrl } from './dom-safe';
 
 // ── 类型定义 ──
 
@@ -333,7 +335,8 @@ class RegionEditorModal extends Modal {
 
     // SVG 叠加层：用于全局坐标系点捕获和多边形绘制
     const svgContainer = editorContainer.createDiv();
-    svgContainer.innerHTML = getBodySVG();
+    // 加固 #Q2-P1【S1】：innerHTML → DOMParser 安全渲染（dom-safe.ts）
+    renderSvgInto(svgContainer, getBodySVG());
     this.svgEl = svgContainer.querySelector('svg');
 
     if (this.svgEl) {
@@ -377,36 +380,22 @@ class RegionEditorModal extends Modal {
         this.svgEl.classList.add('anatomy-editor-svg-overlay');
       }
 
-      // 创建叠加层
-      const overlay = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'g',
-      );
-      overlay.id = 'editor-overlay';
-      this.svgEl.appendChild(overlay);
+      // 创建叠加层（加固 #Q3-P4【S2】：createSvg 替代 createElementNS，创建即追加）
+      const overlay = this.svgEl.createSvg('g', { attr: { id: 'editor-overlay' } });
 
       // 多边形预览
-      this.polygonPreview = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'polygon',
-      );
-      this.polygonPreview.setAttribute('fill', 'rgba(250, 200, 0, 0.2)');
-      this.polygonPreview.setAttribute(
-        'stroke',
-        'rgba(250, 200, 0, 0.8)',
-      );
-      this.polygonPreview.setAttribute('stroke-width', '1.5');
-      this.polygonPreview.setAttribute('stroke-dasharray', '4,2');
+      this.polygonPreview = overlay.createSvg('polygon', {
+        attr: {
+          fill: 'rgba(250, 200, 0, 0.2)',
+          stroke: 'rgba(250, 200, 0, 0.8)',
+          'stroke-width': '1.5',
+          'stroke-dasharray': '4,2',
+        },
+      });
       this.polygonPreview.style.pointerEvents = 'none';
-      overlay.appendChild(this.polygonPreview);
 
       // 顶点标记组
-      this.pointsGroup = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'g',
-      );
-      this.pointsGroup.id = 'editor-points';
-      overlay.appendChild(this.pointsGroup);
+      this.pointsGroup = overlay.createSvg('g', { attr: { id: 'editor-points' } });
 
       // 点击添加顶点
       this.svgEl.addEventListener('click', (e: MouseEvent) =>
@@ -415,7 +404,8 @@ class RegionEditorModal extends Modal {
       // 双击完成
       this.svgEl.addEventListener('dblclick', (e: MouseEvent) => {
         e.preventDefault();
-        this.finish();
+        // 加固 #Q3-P2【S2】：finish() 返回 Promise，void 显式标记
+        void this.finish();
       });
 
       this.updatePreview();
@@ -449,7 +439,10 @@ class RegionEditorModal extends Modal {
       text: '完成',
       cls: 'mod-cta',
     });
-    finishBtn.addEventListener('click', () => this.finish());
+    finishBtn.addEventListener('click', () => {
+      // 加固 #Q3-P3【S2】：回调签名保持 void，Promise 以 void 标记
+      void this.finish();
+    });
 
     this.updateCount();
   }
@@ -474,13 +467,13 @@ class RegionEditorModal extends Modal {
   private updatePreview() {
     if (!this.polygonPreview || !this.pointsGroup || !this.svgEl) return;
 
-    // 根据 viewBox 尺寸动态计算圆点半径和字号（保持视觉比例一致）
+    // 加固 #F2-P4：统一选点尺寸策略——viewBox 短边百分比 + 上下限钳制（二次调小）
     const vb = this.svgEl.viewBox.baseVal;
-    const vbScale = vb.width > 0 ? Math.sqrt(vb.width) * 0.2 : 4;
-    const dotR = Math.max(1, vbScale);          // 圆点半径
-    const dotStroke = Math.max(0.3, vbScale * 0.25); // 圆点描边
-    const fontSize = Math.max(3, vbScale * 2);   // 编号字号
-    const textOffset = vbScale * 1.5;            // 编号偏移
+    const vbShort = Math.min(vb.width, vb.height) || 500;
+    const dotR = Math.min(6, Math.max(1, vbShort * 0.01));
+    const dotStroke = Math.max(0.3, dotR * 0.3);
+    const fontSize = Math.min(9, Math.max(5, dotR * 1.8));
+    const textOffset = dotR * 1.5;
 
     // 多边形
     if (this.points.length >= 2) {
@@ -494,32 +487,32 @@ class RegionEditorModal extends Modal {
     }
 
     // 顶点圆点 + 编号
-    this.pointsGroup.innerHTML = '';
+    // 加固 #Q2-P1【S1】：innerHTML 清空 → replaceChildren()
+    this.pointsGroup.replaceChildren();
     this.points.forEach((pt, i) => {
-      const c = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'circle',
-      );
-      c.setAttribute('cx', String(pt.x));
-      c.setAttribute('cy', String(pt.y));
-      c.setAttribute('r', String(dotR));
-      c.setAttribute('fill', '#fac800');
-      c.setAttribute('stroke', '#fff');
-      c.setAttribute('stroke-width', String(dotStroke));
+      // 加固 #Q3-P4【S2】：createSvg 创建即追加到 pointsGroup
+      const c = this.pointsGroup!.createSvg('circle', {
+        attr: {
+          cx: String(pt.x),
+          cy: String(pt.y),
+          r: String(dotR),
+          fill: '#fac800',
+          stroke: '#fff',
+          'stroke-width': String(dotStroke),
+        },
+      });
       c.style.pointerEvents = 'none';
-      this.pointsGroup!.appendChild(c);
 
-      const t = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'text',
-      );
-      t.setAttribute('x', String(pt.x + textOffset));
-      t.setAttribute('y', String(pt.y - textOffset));
-      t.setAttribute('fill', '#fac800');
-      t.setAttribute('font-size', String(fontSize));
+      const t = this.pointsGroup!.createSvg('text', {
+        attr: {
+          x: String(pt.x + textOffset),
+          y: String(pt.y - textOffset),
+          fill: '#fac800',
+          'font-size': String(fontSize),
+        },
+      });
       t.style.pointerEvents = 'none';
       t.textContent = String(i + 1);
-      this.pointsGroup!.appendChild(t);
     });
   }
 
@@ -808,7 +801,8 @@ export class PointAnnotationEditorModal extends Modal {
       cls: 'anatomy-editor-svg-wrapper',
     });
     this.annSvg = getAnnotationSVG(this.regionId);
-    svgContainer.innerHTML = this.annSvg.svg;
+    // 加固 #Q2-P1【S1】：innerHTML → DOMParser 安全渲染
+    renderSvgInto(svgContainer, this.annSvg.svg);
     this.svgEl = svgContainer.querySelector('svg');
 
     if (this.svgEl) {
@@ -820,13 +814,8 @@ export class PointAnnotationEditorModal extends Modal {
         (el as SVGElement).style.pointerEvents = 'none';
       });
 
-      // 创建叠加层 <g> 用于渲染标注点
-      this.overlay = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'g',
-      );
-      this.overlay.id = 'annotation-overlay';
-      this.svgEl.appendChild(this.overlay);
+      // 创建叠加层 <g> 用于渲染标注点（加固 #Q3-P4【S2】：createSvg 创建即追加）
+      this.overlay = this.svgEl.createSvg('g', { attr: { id: 'annotation-overlay' } });
 
       // 点击添加/选择标注点
       this.svgEl.addEventListener('click', (e: MouseEvent) =>
@@ -859,7 +848,10 @@ export class PointAnnotationEditorModal extends Modal {
       text: '完成',
       cls: 'mod-cta',
     });
-    finishBtn.addEventListener('click', () => this.finish());
+    finishBtn.addEventListener('click', () => {
+      // 加固 #Q3-P3【S2】：回调签名保持 void，Promise 以 void 标记
+      void this.finish();
+    });
 
     this.renderPoints();
     this.renderPointList();
@@ -904,62 +896,61 @@ export class PointAnnotationEditorModal extends Modal {
   /** 渲染 SVG 上的标注点 */
   private renderPoints() {
     if (!this.overlay || !this.annSvg || !this.svgEl) return;
-    this.overlay.innerHTML = '';
+    // 加固 #Q2-P1【S1】：innerHTML 清空 → replaceChildren()
+    this.overlay.replaceChildren();
 
-    // 根据 viewBox 尺寸动态计算标注点大小
+    // 加固 #F2-P4：统一选点尺寸策略——viewBox 短边百分比 + 上下限钳制（二次调小）
     const vb = this.svgEl.viewBox.baseVal;
-    const vbScale = vb.width > 0 ? Math.sqrt(vb.width) * 0.2 : 4;
-    const dotR = Math.max(1.5, vbScale * 1.5);
-    const dotRSelected = Math.max(2, vbScale * 2);
-    const dotStroke = Math.max(0.5, vbScale * 0.5);
-    const fontSize = Math.max(4, vbScale * 2.5);
-    const textOffset = vbScale * 2;
+    const vbShort = Math.min(vb.width, vb.height) || 500;
+    const dotR = Math.min(4, Math.max(1, vbShort * 0.004));
+    const dotRSelected = Math.min(6, dotR * 1.5);
+    const dotStroke = Math.max(0.4, dotR * 0.35);
+    const fontSize = Math.min(8, Math.max(5, dotR * 1.6));
+    const textOffset = dotR * 1.6;
 
     for (const point of this.points) {
       const isSelected = point.id === this.selectedId;
       const [dx, dy] = this.annSvg.fromBody(point.x, point.y);
 
-      const c = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'circle',
-      );
-      c.setAttribute('cx', String(dx));
-      c.setAttribute('cy', String(dy));
-      c.setAttribute('r', isSelected ? String(dotRSelected) : String(dotR));
-      c.setAttribute('fill', isSelected ? '#c0392b' : '#e74c3c');
-      c.setAttribute('stroke', '#fff');
-      c.setAttribute('stroke-width', String(dotStroke));
+      // 加固 #Q3-P4【S2】：createSvg 创建即追加到 overlay；圆点保留引用以绑定事件
+      const c = this.overlay.createSvg('circle', {
+        attr: {
+          cx: String(dx),
+          cy: String(dy),
+          r: isSelected ? String(dotRSelected) : String(dotR),
+          fill: isSelected ? '#c0392b' : '#e74c3c',
+          stroke: '#fff',
+          'stroke-width': String(dotStroke),
+        },
+        cls: isSelected ? 'anatomy-annotation-pulse' : undefined,
+      });
       c.style.pointerEvents = 'auto';
       c.style.cursor = 'pointer';
-      if (isSelected) {
-        c.classList.add('anatomy-annotation-pulse');
-      }
       c.addEventListener('click', (ev: MouseEvent) => {
         ev.stopPropagation();
         this.selectedId = point.id;
         this.renderPoints();
         this.renderPointList();
       });
-      this.overlay.appendChild(c);
 
-      const t = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'text',
-      );
-      t.setAttribute('x', String(dx + textOffset));
-      t.setAttribute('y', String(dy - textOffset));
-      t.setAttribute('fill', '#e74c3c');
-      t.setAttribute('font-size', String(fontSize));
+      const t = this.overlay.createSvg('text', {
+        attr: {
+          x: String(dx + textOffset),
+          y: String(dy - textOffset),
+          fill: '#e74c3c',
+          'font-size': String(fontSize),
+        },
+      });
       t.style.pointerEvents = 'none';
       t.textContent = point.label;
-      this.overlay.appendChild(t);
     }
   }
 
   /** 渲染标注点列表 */
   private renderPointList() {
     if (!this.listContainer) return;
-    this.listContainer.innerHTML = '';
+    // 加固 #Q2-P1【S1】：innerHTML 清空 → replaceChildren()
+    this.listContainer.replaceChildren();
 
     this.points.forEach((point, i) => {
       const row = this.listContainer!.createDiv({
@@ -1201,7 +1192,10 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
   plugin: AnatomyMapPluginLike;
 
   constructor(app: App, plugin: AnatomyMapPluginLike) {
-    super(app, plugin as any);
+    // 加固 #Q3-P1【S2】：PluginSettingTab 构造要求 Plugin，而此处刻意只依赖结构子集
+    // AnatomyMapPluginLike（避免与 main.ts 具体类循环耦合）；unknown 双断言显式表达该结构兼容，
+    // 消除 as any 的隐式逃生口
+    super(app, plugin as unknown as Plugin);
     this.plugin = plugin;
   }
 
@@ -1376,7 +1370,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
           const srcY = (localBB.y - mOffsetY) / mScale;
           const srcW = localBB.w / mScale;
           const srcH = localBB.h / mScale;
-          const canvas = document.createElement('canvas');
+          // 加固 #Q3-P4【S2】：离屏 div 承载 createEl('canvas')，canvas 不入 DOM 仅用于 toDataURL
+          const canvas = createDiv().createEl('canvas');
           canvas.width = OUT;
           canvas.height = OUT;
           const ctx = canvas.getContext('2d');
@@ -1444,7 +1439,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
           const srcY = (localBB.y - mOffsetY) / mScale;
           const srcW = localBB.w / mScale;
           const srcH = localBB.h / mScale;
-          const canvas = document.createElement('canvas');
+          // 加固 #Q3-P4【S2】：离屏 div 承载 createEl('canvas')，canvas 不入 DOM 仅用于 toDataURL
+          const canvas = createDiv().createEl('canvas');
           canvas.width = OUT;
           canvas.height = OUT;
           const ctx = canvas.getContext('2d');
@@ -1496,7 +1492,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
         im.onerror = reject;
         im.src = url;
       });
-      const canvas = document.createElement('canvas');
+      // 加固 #Q3-P4【S2】：离屏 div 承载 createEl('canvas')，canvas 不入 DOM 仅用于 toDataURL
+      const canvas = createDiv().createEl('canvas');
       canvas.width = OUT;
       canvas.height = OUT;
       const ctx = canvas.getContext('2d');
@@ -1531,11 +1528,11 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
   /** 打开文件选择框，读取上传的图片为 dataURL（限制大小） */
   static async pickAndReadImage(container: HTMLElement): Promise<string | null> {
     return new Promise((resolve) => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
+      // 加固 #Q3-P4【S2】：container.createEl 替代 document.createElement（创建即追加到 container）
+      const input = container.createEl('input', {
+        attr: { type: 'file', accept: 'image/*' },
+      });
       input.style.display = 'none';
-      container.appendChild(input);
       input.onchange = async () => {
         const f = input.files?.[0];
         input.remove();
@@ -1550,12 +1547,12 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
         reader.onerror = () => resolve(null);
         reader.readAsDataURL(f);
       };
-      // 用户取消时清理
-      setTimeout(() => {
+      // 用户取消时清理（加固 #Q3-P5【S2】：window.setTimeout 兼容 popout window）
+      window.setTimeout(() => {
         window.addEventListener(
           'focus',
           () => {
-            if (input.parentElement) setTimeout(() => input.remove(), 800);
+            if (input.parentElement) window.setTimeout(() => input.remove(), 800);
           },
           { once: true },
         );
@@ -1572,11 +1569,16 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
   ) {
     if (!dataUrl) {
       delete this.plugin.settings.regionThumbnails[regionId];
-    } else {
+    } else if (isImageDataUrl(dataUrl)) {
+      // 加固 #Q2-P1【S1】：dataUrl 白名单校验（仅 PNG/JPEG/GIF/WebP base64），
+      // 不合格式拒绝持久化，阻断 data:text/html 等恶意载荷经 data.json 注入
       this.plugin.settings.regionThumbnails[regionId] = { dataUrl, source };
+    } else {
+      alert('示意图格式不受支持（仅支持 PNG/JPEG/GIF/WebP），已取消保存');
     }
     setSettings(this.plugin.settings);
-    this.plugin.saveSettings();
+    // 加固 #Q3-P2【S2】：void 显式标记保存 Promise
+    void this.plugin.saveSettings();
   }
 
   /**
@@ -1623,14 +1625,17 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
       text: '上传示意图',
       cls: 'mod-cta anatomy-thumb-btn',
     });
-    uploadBtn.addEventListener('click', async () => {
-      const dataUrl = await AnatomyMapSettingTab.pickAndReadImage(
-        this.containerEl,
-      );
-      if (dataUrl) {
-        this.saveThumbnail(regionId, dataUrl, 'upload');
-        onChanged?.();
-      }
+    // 加固 #Q3-P3【S2】：async click 改 void IIFE + catch 兜底
+    uploadBtn.addEventListener('click', () => {
+      void (async () => {
+        const dataUrl = await AnatomyMapSettingTab.pickAndReadImage(
+          this.containerEl,
+        );
+        if (dataUrl) {
+          this.saveThumbnail(regionId, dataUrl, 'upload');
+          onChanged?.();
+        }
+      })().catch((err) => console.error('thumbnail upload failed:', err));
     });
 
     const hasPoints = pointsForAuto.length >= 3;
@@ -1642,20 +1647,23 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
       autoBtn.disabled = true;
       autoBtn.title = '先绘制≥3个顶点后才能自动生成';
     }
-    autoBtn.addEventListener('click', async () => {
-      autoBtn.disabled = true;
-      autoBtn.setText('生成中…');
-      try {
-        const dataUrl = await this.generateAutoThumbnail(
-          regionId,
-          pointsForAuto,
-        );
-        if (dataUrl) this.saveThumbnail(regionId, dataUrl, 'auto');
-      } finally {
-        autoBtn.setText('自动框选生成');
-        autoBtn.disabled = !hasPoints;
-        onChanged?.();
-      }
+    // 加固 #Q3-P3【S2】：async click 改 void IIFE + catch 兜底
+    autoBtn.addEventListener('click', () => {
+      void (async () => {
+        autoBtn.disabled = true;
+        autoBtn.setText('生成中…');
+        try {
+          const dataUrl = await this.generateAutoThumbnail(
+            regionId,
+            pointsForAuto,
+          );
+          if (dataUrl) this.saveThumbnail(regionId, dataUrl, 'auto');
+        } finally {
+          autoBtn.setText('自动框选生成');
+          autoBtn.disabled = !hasPoints;
+          onChanged?.();
+        }
+      })().catch((err) => console.error('auto thumbnail failed:', err));
     });
 
     if (thumb) {
@@ -1720,7 +1728,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
                 };
                 this.plugin.settings.regionPolygons.push(np);
                 setSettings(this.plugin.settings);
-                this.plugin.saveSettings();
+                // 加固 #Q3-P2【S2】：void 显式标记保存 Promise
+                void this.plugin.saveSettings();
                 new RegionEditorModal(
                   this.app,
                   id,
@@ -1885,7 +1894,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
           }
         }
         setSettings(this.plugin.settings);
-        this.plugin.saveSettings();
+        // 加固 #Q3-P2【S2】：void 显式标记保存 Promise
+        void this.plugin.saveSettings();
         this.display();
       });
     }
@@ -1907,48 +1917,51 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
         text: '全部删除',
         cls: 'mod-warning anatomy-recycle-clear-all-btn',
       });
-      clearAllBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const confirmed = await showConfirmDialog(
-          this.app,
-          `清空回收站？`,
-          `将彻底删除回收站中的全部 ${recycleIds.length} 个分区，此操作无法撤销。`,
-        );
-        if (!confirmed) return;
+      // 加固 #Q3-P3【S2】：async click 改 void IIFE + catch 兜底
+      clearAllBtn.addEventListener('click', (e: MouseEvent) => {
+        void (async () => {
+          e.stopPropagation();
+          const confirmed = await showConfirmDialog(
+            this.app,
+            `清空回收站？`,
+            `将彻底删除回收站中的全部 ${recycleIds.length} 个分区，此操作无法撤销。`,
+          );
+          if (!confirmed) return;
 
-        const recycleIdsSet = new Set(recycleIds);
-        for (const id of recycleIds) {
-          // 移除多边形
-          this.plugin.settings.regionPolygons =
-            this.plugin.settings.regionPolygons.filter((p) => p.regionId !== id);
-          // 移除示意图
-          if (this.plugin.settings.regionThumbnails[id]) {
-            delete this.plugin.settings.regionThumbnails[id];
+          const recycleIdsSet = new Set(recycleIds);
+          for (const id of recycleIds) {
+            // 移除多边形
+            this.plugin.settings.regionPolygons =
+              this.plugin.settings.regionPolygons.filter((p) => p.regionId !== id);
+            // 移除示意图
+            if (this.plugin.settings.regionThumbnails[id]) {
+              delete this.plugin.settings.regionThumbnails[id];
+            }
+            // 移除选点标注
+            this.plugin.settings.pointAnnotations =
+              this.plugin.settings.pointAnnotations.filter((a) => a.regionId !== id);
+            // 移除重命名记录
+            if (this.plugin.settings.renamedRegions[id]) {
+              delete this.plugin.settings.renamedRegions[id];
+            }
+            // 从回收站中移除
+            this.plugin.settings.hiddenRegionIds =
+              this.plugin.settings.hiddenRegionIds.filter((x) => x !== id);
+            // 内置分区：加入 recycledRegionIds
+            if (getAllKnownRegionIds().has(id) && !this.plugin.settings.recycledRegionIds.includes(id)) {
+              this.plugin.settings.recycledRegionIds.push(id);
+            }
           }
-          // 移除选点标注
-          this.plugin.settings.pointAnnotations =
-            this.plugin.settings.pointAnnotations.filter((a) => a.regionId !== id);
-          // 移除重命名记录
-          if (this.plugin.settings.renamedRegions[id]) {
-            delete this.plugin.settings.renamedRegions[id];
-          }
-          // 从回收站中移除
-          this.plugin.settings.hiddenRegionIds =
-            this.plugin.settings.hiddenRegionIds.filter((x) => x !== id);
-          // 内置分区：加入 recycledRegionIds
-          if (getAllKnownRegionIds().has(id) && !this.plugin.settings.recycledRegionIds.includes(id)) {
-            this.plugin.settings.recycledRegionIds.push(id);
-          }
-        }
-        // 清理所有其他分区 polygon 的 parentRegionId 引用
-        this.plugin.settings.regionPolygons.forEach((p) => {
-          if (p.parentRegionId && recycleIdsSet.has(p.parentRegionId)) {
-            p.parentRegionId = undefined;
-          }
-        });
-        setSettings(this.plugin.settings);
-        await this.plugin.saveSettings();
-        this.display();
+          // 清理所有其他分区 polygon 的 parentRegionId 引用
+          this.plugin.settings.regionPolygons.forEach((p) => {
+            if (p.parentRegionId && recycleIdsSet.has(p.parentRegionId)) {
+              p.parentRegionId = undefined;
+            }
+          });
+          setSettings(this.plugin.settings);
+          await this.plugin.saveSettings();
+          this.display();
+        })().catch((err) => console.error('clear recycle bin failed:', err));
       });
 
       const content = containerEl.createDiv({
@@ -1990,7 +2003,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
               (id) => id !== hiddenId,
             );
           setSettings(this.plugin.settings);
-          this.plugin.saveSettings();
+          // 加固 #Q3-P2【S2】：void 显式标记保存 Promise
+          void this.plugin.saveSettings();
           this.display();
         });
 
@@ -1998,52 +2012,55 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
           text: '彻底删除',
           cls: 'mod-warning',
         });
-        deleteBtn.addEventListener('click', async () => {
-          const isBuiltIn = getAllKnownRegionIds().has(hiddenId);
-          // 收集所有后代ID一起彻底删除
-          const allIds = [hiddenId, ...this.collectDescendantIds(hiddenId)];
-          const confirmed = await showConfirmDialog(
-            this.app,
-            `彻底删除「${label}」？`,
-            allIds.length > 1
-              ? `将彻底删除此分区及其 ${allIds.length - 1} 个子分区，释放所有ID，清除自定义数据。`
-              : '将释放此分区ID，清除所有自定义数据（多边形、示意图、标注、重命名），可用相同ID重新创建。',
-          );
-          if (!confirmed) return;
+        // 加固 #Q3-P3【S2】：async click 改 void IIFE + catch 兜底
+        deleteBtn.addEventListener('click', () => {
+          void (async () => {
+            const isBuiltIn = getAllKnownRegionIds().has(hiddenId);
+            // 收集所有后代ID一起彻底删除
+            const allIds = [hiddenId, ...this.collectDescendantIds(hiddenId)];
+            const confirmed = await showConfirmDialog(
+              this.app,
+              `彻底删除「${label}」？`,
+              allIds.length > 1
+                ? `将彻底删除此分区及其 ${allIds.length - 1} 个子分区，释放所有ID，清除自定义数据。`
+                : '将释放此分区ID，清除所有自定义数据（多边形、示意图、标注、重命名），可用相同ID重新创建。',
+            );
+            if (!confirmed) return;
 
-          const allIdsSet = new Set(allIds);
-          for (const id of allIds) {
-            // 移除多边形
-            this.plugin.settings.regionPolygons =
-              this.plugin.settings.regionPolygons.filter((p) => p.regionId !== id);
-            // 移除示意图
-            if (this.plugin.settings.regionThumbnails[id]) {
-              delete this.plugin.settings.regionThumbnails[id];
+            const allIdsSet = new Set(allIds);
+            for (const id of allIds) {
+              // 移除多边形
+              this.plugin.settings.regionPolygons =
+                this.plugin.settings.regionPolygons.filter((p) => p.regionId !== id);
+              // 移除示意图
+              if (this.plugin.settings.regionThumbnails[id]) {
+                delete this.plugin.settings.regionThumbnails[id];
+              }
+              // 移除选点标注
+              this.plugin.settings.pointAnnotations =
+                this.plugin.settings.pointAnnotations.filter((a) => a.regionId !== id);
+              // 移除重命名记录
+              if (this.plugin.settings.renamedRegions[id]) {
+                delete this.plugin.settings.renamedRegions[id];
+              }
+              // 从回收站中移除
+              this.plugin.settings.hiddenRegionIds =
+                this.plugin.settings.hiddenRegionIds.filter((x) => x !== id);
+              // 内置分区：加入 recycledRegionIds
+              if (getAllKnownRegionIds().has(id) && !this.plugin.settings.recycledRegionIds.includes(id)) {
+                this.plugin.settings.recycledRegionIds.push(id);
+              }
             }
-            // 移除选点标注
-            this.plugin.settings.pointAnnotations =
-              this.plugin.settings.pointAnnotations.filter((a) => a.regionId !== id);
-            // 移除重命名记录
-            if (this.plugin.settings.renamedRegions[id]) {
-              delete this.plugin.settings.renamedRegions[id];
-            }
-            // 从回收站中移除
-            this.plugin.settings.hiddenRegionIds =
-              this.plugin.settings.hiddenRegionIds.filter((x) => x !== id);
-            // 内置分区：加入 recycledRegionIds
-            if (getAllKnownRegionIds().has(id) && !this.plugin.settings.recycledRegionIds.includes(id)) {
-              this.plugin.settings.recycledRegionIds.push(id);
-            }
-          }
-          // 清理所有其他分区 polygon 的 parentRegionId 引用（若父在 allIds 中则清空，提升为顶级）
-          this.plugin.settings.regionPolygons.forEach((p) => {
-            if (p.parentRegionId && allIdsSet.has(p.parentRegionId)) {
-              p.parentRegionId = undefined;
-            }
-          });
-          setSettings(this.plugin.settings);
-          await this.plugin.saveSettings();
-          this.display();
+            // 清理所有其他分区 polygon 的 parentRegionId 引用（若父在 allIds 中则清空，提升为顶级）
+            this.plugin.settings.regionPolygons.forEach((p) => {
+              if (p.parentRegionId && allIdsSet.has(p.parentRegionId)) {
+                p.parentRegionId = undefined;
+              }
+            });
+            setSettings(this.plugin.settings);
+            await this.plugin.saveSettings();
+            this.display();
+          })().catch((err) => console.error('delete hidden region failed:', err));
         });
       }
     }
@@ -2136,9 +2153,12 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
       .setDesc('从 JSON 备份文件恢复数据（当前数据将被覆盖）')
       .addButton((btn) => {
         btn.setButtonText('选择备份文件').setWarning().onClick(() => {
+          // 加固 #Q3-P3【S2】：构造器回调签名为 void，恢复 Promise 以 void + catch 兜底
           new RestoreBackupModal(
             this.app,
-            async (file) => { await this.restoreBackup(file); },
+            (file) => {
+              void this.restoreBackup(file).catch((err) => console.error('restore backup failed:', err));
+            },
           ).open();
         });
       });
@@ -2169,8 +2189,10 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
         await this.app.vault.create(filePath, json);
       }
       new Notice(`备份已保存到 ${filePath}`);
-    } catch (err) {
-      new Notice(`备份失败：${err.message || err}`);
+    } catch (err: unknown) {
+      // 加固 #Q3-P1【S2】：catch 变量为 unknown，窄化后再取 message
+      const reason = err instanceof Error ? err.message : String(err);
+      new Notice(`备份失败：${reason}`);
     }
   }
 
@@ -2180,7 +2202,8 @@ export class AnatomyMapSettingTab extends PluginSettingTab {
 
     try {
       const content = await this.app.vault.read(file);
-      data = JSON.parse(content);
+      // 加固 #Q3-P1【S2】：JSON.parse 返回 any，断言为已声明的备份数据类型后赋值
+      data = JSON.parse(content) as typeof data;
     } catch {
       new Notice('备份文件解析失败，请确认是有效的 JSON 文件');
       return;

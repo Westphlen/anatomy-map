@@ -4,28 +4,39 @@
  */
 
 import { Plugin, WorkspaceLeaf, TFile } from 'obsidian';
-import { AnatomyMapView, VIEW_TYPE_ANATOMY_MAP, getAnnotationSVG } from './src/view';
-import { BODY_REGIONS, buildAliasMap, findRegion, flattenAllRegions } from './src/anatomy-data';
+// 加固 #P1【S1】：修正模块路径（文件实际位于仓库根目录，非 ./src/）；加固 #P4【S3】：移除未使用的 buildAliasMap 导入
+import { AnatomyMapView, VIEW_TYPE_ANATOMY_MAP, getAnnotationSVG } from './view';
+import { BODY_REGIONS, findRegion, flattenAllRegions } from './anatomy-data';
+// 加固 #P2【S1】：显式导入 RegionPolygon / PointAnnotation，为回调参数补全类型注解
 import {
   AnatomyMapSettings,
   DEFAULT_SETTINGS,
   AnatomyMapSettingTab,
   setSettings,
   setSaveCallback,
-} from './src/settings';
+  RegionPolygon,
+  PointAnnotation,
+} from './settings';
+// 加固 #Q2-P1【S1】：引入 DOM 安全写入工具，替代 innerHTML 直接赋值
+import { renderSvgInto } from './dom-safe';
 
 export default class AnatomyMapPlugin extends Plugin {
   settings: AnatomyMapSettings;
 
   async onload() {
     // 加载设置
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    // 加固 #Q3-P1【S2】：loadData(): Promise<any> 显式断言为 Partial<AnatomyMapSettings>，
+    // 阻断 any 向 this.settings 的污染
+    const loaded = (await this.loadData()) as Partial<AnatomyMapSettings> | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded ?? {});
     // 迁移旧版 pointAnnotations：notePath(string) → notePaths(string[])
+    // 加固 #Q3-P1【S2】：以 LegacyPointAnnotation 精确描述旧字段，消除 (pa as any) ×4
     if (Array.isArray(this.settings.pointAnnotations)) {
       for (const pa of this.settings.pointAnnotations) {
-        if ((pa as any).notePath !== undefined && !pa.notePaths) {
-          pa.notePaths = (pa as any).notePath ? [(pa as any).notePath] : [];
-          delete (pa as any).notePath;
+        const legacy = pa as PointAnnotation & { notePath?: string };
+        if (legacy.notePath !== undefined && !legacy.notePaths) {
+          legacy.notePaths = legacy.notePath ? [legacy.notePath] : [];
+          delete legacy.notePath;
         }
       }
     }
@@ -43,15 +54,20 @@ export default class AnatomyMapPlugin extends Plugin {
 
     // 添加左侧边栏图标
     this.addRibbonIcon('heart', '人体解剖定位图', () => {
-      this.activateView();
+      // 加固 #Q3-P2【S2】：显式 void 标记 UI 事件回调中不等待的 Promise
+      void this.activateView();
     });
 
     // 注册命令
-    this.addCommand({
-      id: 'open-anatomy-map',
+    // 加固 #Q3-P6【S2】：review 要求命令 ID 不含插件 ID（Obsidian 自动加前缀防冲突）。
+    // 采用方案 B 双注册：新增合规 id 'open'，同时保留旧 id 以兼容用户已绑定的热键，
+    // 旧命令名称标注"（兼容）"，后续版本移除；两者指向同一 callback。
+    const openCommand = {
       name: '打开人体解剖定位图',
-      callback: () => this.activateView(),
-    });
+      callback: () => { void this.activateView(); },
+    };
+    this.addCommand({ id: 'open', ...openCommand });
+    this.addCommand({ id: 'open-anatomy-map', name: `${openCommand.name}（兼容旧热键）`, callback: openCommand.callback });
 
     // 注册 codeblock 处理器：在笔记中嵌入解剖分区小地图
     this.registerMarkdownCodeBlockProcessor('anatomy-map', (source, el, ctx) => {
@@ -78,7 +94,8 @@ export default class AnatomyMapPlugin extends Plugin {
     // ===== 2. 通过 frontmatter anatomy 字段补充收集关联分区 =====
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
-    const anatomyField = fm?.['anatomy'];
+    // 加固 #Q3-P1【S2】：frontmatter 索引签名为 any，先收为 unknown 再窄化
+    const anatomyField: unknown = fm?.['anatomy'];
     if (anatomyField) {
       const aliases: string[] = Array.isArray(anatomyField)
         ? anatomyField.map(String)
@@ -90,7 +107,7 @@ export default class AnatomyMapPlugin extends Plugin {
         if (hidden.has(r.id)) continue;
         let label = r.label;
         if (settings.renamedRegions[r.id]) label = settings.renamedRegions[r.id];
-        const custom = settings.regionPolygons.find((p) => p.regionId === r.id);
+        const custom = settings.regionPolygons.find((p: RegionPolygon) => p.regionId === r.id);
         if (custom) {
           label = custom.regionLabel || label;
           const allAliases = [...r.aliases];
@@ -123,7 +140,7 @@ export default class AnatomyMapPlugin extends Plugin {
     // 为每个匹配的分区渲染小地图（含所有标点，高亮当前笔记关联的）
     for (const regionId of matchedRegionIds) {
       const region = findRegion(regionId);
-      const poly = settings.regionPolygons.find((p) => p.regionId === regionId);
+      const poly = settings.regionPolygons.find((p: RegionPolygon) => p.regionId === regionId);
       const label = poly?.regionLabel || settings.renamedRegions[regionId] || region?.label || regionId;
 
       const container = el.createDiv({ cls: 'anatomy-codeblock-map' });
@@ -132,52 +149,58 @@ export default class AnatomyMapPlugin extends Plugin {
 
       const svgWrapper = container.createDiv({ cls: 'anatomy-codeblock-svg' });
       const annSvg = getAnnotationSVG(regionId);
-      svgWrapper.innerHTML = annSvg.svg;
+      // 加固 #Q2-P1【S1】：innerHTML → DOMParser 安全渲染（dom-safe.ts）
+      renderSvgInto(svgWrapper, annSvg.svg);
 
       // 渲染该分区的所有标点（与侧边栏选点标注栏一致），高亮当前笔记关联的
-      const annotations = settings.pointAnnotations.filter((a) => a.regionId === regionId);
-      const svgEl = svgWrapper.querySelector('svg');
-      if (svgEl && annotations.length > 0) {
+      const annotations = settings.pointAnnotations.filter((a: PointAnnotation) => a.regionId === regionId);
+      // 加固 #Q3-P4【S2】：querySelector 显式泛型 + createSvg 替代 document.createElementNS
+      const svgRoot = svgWrapper.querySelector<SVGSVGElement>('svg');
+      if (svgRoot && annotations.length > 0) {
         const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#e91e63'];
-        annotations.forEach((ann, i) => {
+        annotations.forEach((ann: PointAnnotation, i: number) => {
           const color = colors[i % colors.length];
           const [dx, dy] = annSvg.fromBody(ann.x, ann.y);
           const isCurrentNote = (ann.notePaths || []).includes(notePath);
 
           // 外圈光晕（当前笔记关联的标点用脉冲动画，其他标点静态半透明）
-          const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          glow.setAttribute('cx', String(dx));
-          glow.setAttribute('cy', String(dy));
-          glow.setAttribute('r', isCurrentNote ? '12' : '8');
-          glow.setAttribute('fill', color);
-          glow.setAttribute('fill-opacity', isCurrentNote ? '0.3' : '0.15');
-          if (isCurrentNote) glow.classList.add('anatomy-codeblock-glow');
-          svgEl.appendChild(glow);
+          // createSvg 创建即追加到父节点，故先建光晕再建圆点以保持"光晕在下"的层叠顺序
+          svgRoot.createSvg('circle', {
+            attr: {
+              cx: String(dx),
+              cy: String(dy),
+              r: isCurrentNote ? '12' : '8',
+              fill: color,
+              'fill-opacity': isCurrentNote ? '0.3' : '0.15',
+            },
+            cls: isCurrentNote ? 'anatomy-codeblock-glow' : undefined,
+          });
 
           // 主圆点
-          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          circle.setAttribute('cx', String(dx));
-          circle.setAttribute('cy', String(dy));
-          circle.setAttribute('r', isCurrentNote ? '6' : '4');
-          circle.setAttribute('fill', color);
-          circle.setAttribute('stroke', '#fff');
-          circle.setAttribute('stroke-width', '1.5');
-          if (isCurrentNote) {
-            circle.setAttribute('stroke-width', '2.5');
-            circle.classList.add('anatomy-codeblock-point-active');
-          }
-          svgEl.appendChild(circle);
+          svgRoot.createSvg('circle', {
+            attr: {
+              cx: String(dx),
+              cy: String(dy),
+              r: isCurrentNote ? '6' : '4',
+              fill: color,
+              stroke: '#fff',
+              'stroke-width': isCurrentNote ? '2.5' : '1.5',
+            },
+            cls: isCurrentNote ? 'anatomy-codeblock-point-active' : undefined,
+          });
 
           // 标注标签（仅当前笔记关联的标点显示标签）
           if (isCurrentNote) {
-            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            text.setAttribute('x', String(dx + 10));
-            text.setAttribute('y', String(dy + 5));
-            text.setAttribute('fill', color);
-            text.setAttribute('font-size', '14');
-            text.setAttribute('font-weight', '600');
+            const text = svgRoot.createSvg('text', {
+              attr: {
+                x: String(dx + 10),
+                y: String(dy + 5),
+                fill: color,
+                'font-size': '14',
+                'font-weight': '600',
+              },
+            });
             text.textContent = ann.label || `点${i + 1}`;
-            svgEl.appendChild(text);
           }
         });
       }
@@ -185,8 +208,9 @@ export default class AnatomyMapPlugin extends Plugin {
       // 点击跳转到侧边栏完整视图
       container.classList.add('anatomy-codeblock-clickable');
       container.addEventListener('click', () => {
-        this.activateView();
-        setTimeout(() => {
+        // 加固 #Q3-P2【S2】：void 标记不等待的 Promise；加固 #Q3-P5【S2】：window.setTimeout 兼容 popout window
+        void this.activateView();
+        window.setTimeout(() => {
           const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_ANATOMY_MAP);
           if (leaves.length > 0) {
             const view = leaves[0].view;
@@ -211,9 +235,9 @@ export default class AnatomyMapPlugin extends Plugin {
     });
   }
 
-  onunload() {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_ANATOMY_MAP);
-  }
+  // 加固 #Q2-P2【S1】：删除 onunload 中的 detachLeavesOfType——Obsidian 卸载插件时
+  // 自动关闭其视图并恢复用户自定义工作区布局，手动 detach 会强制重置用户布局
+  // （review Error "Don't detach leaves in onunload"）；无其余清理职责，整个方法移除。
 
   async activateView() {
     const { workspace } = this.app;
@@ -226,6 +250,8 @@ export default class AnatomyMapPlugin extends Plugin {
       if (!leaf) return;
       await leaf.setViewState({ type: VIEW_TYPE_ANATOMY_MAP, active: true });
     }
-    if (leaf) workspace.revealLeaf(leaf);
+    // 加固 #Q2-P3【S1】：revealLeaf @since 1.7.2 高于 manifest minAppVersion 1.1.0，
+    // 改用 setActiveLeaf（@since 0.16.3 ≤ 1.1.0 兼容）
+    if (leaf) workspace.setActiveLeaf(leaf, { focus: true });
   }
 }

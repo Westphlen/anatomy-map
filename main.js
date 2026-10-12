@@ -29,10 +29,10 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian3 = require("obsidian");
 
-// src/view.ts
+// view.ts
 var import_obsidian2 = require("obsidian");
 
-// src/anatomy-data.ts
+// anatomy-data.ts
 var BODY_REGIONS = [
   {
     id: "head",
@@ -177,7 +177,34 @@ function flattenAllRegions(regions = BODY_REGIONS) {
   return result;
 }
 
-// src/svg-templates.ts
+// dom-safe.ts
+function escapeSvgAttr(v) {
+  return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+var IMAGE_DATA_URL_RE = /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/;
+function isImageDataUrl(dataUrl) {
+  return IMAGE_DATA_URL_RE.test(dataUrl);
+}
+function svgToElement(svg) {
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  let root = doc.documentElement;
+  if (!root || root.nodeName === "parsererror" || root.getElementsByTagName("parsererror").length > 0) {
+    const htmlDoc = new DOMParser().parseFromString(svg, "text/html");
+    root = htmlDoc.querySelector("svg");
+  }
+  if (!root || root.nodeName !== "svg")
+    return null;
+  return document.importNode(root, true);
+}
+function renderSvgInto(container, svg) {
+  const el = svgToElement(svg);
+  container.replaceChildren();
+  if (el)
+    container.appendChild(el);
+  return el;
+}
+
+// svg-templates.ts
 var bodySVG = `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:i="http://ns.adobe.com/AdobeIllustrator/10.0/" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 500 500">
   <defs>
     <style>
@@ -2515,8 +2542,8 @@ function getBodySVG(userPolygons, hiddenRegionIds) {
       const isTopLevel = !p.parentRegionId || hidden.has(p.parentRegionId);
       return isTopLevel;
     }).map((p) => {
-      const pts = p.points.map((pt) => `${pt.x},${pt.y}`).join(" ");
-      return `<g class="region" data-region="${p.regionId}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
+      const pts = p.points.map((pt) => `${Number(pt.x)},${Number(pt.y)}`).join(" ");
+      return `<g class="region" data-region="${escapeSvgAttr(p.regionId)}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
     }).join("\n");
     if (polygonHTML) {
       svg = svg.replace("</svg>", `${polygonHTML}
@@ -2529,7 +2556,7 @@ function getRegionSVG(regionId) {
   return regionMap[regionId] || "";
 }
 
-// src/settings.ts
+// settings.ts
 var import_obsidian = require("obsidian");
 var DEFAULT_REGION_POLYGONS = [
   {
@@ -2804,7 +2831,7 @@ var RegionEditorModal = class extends import_obsidian.Modal {
       }
     }
     const svgContainer = editorContainer.createDiv();
-    svgContainer.innerHTML = getBodySVG();
+    renderSvgInto(svgContainer, getBodySVG());
     this.svgEl = svgContainer.querySelector("svg");
     if (this.svgEl) {
       this.svgEl.classList.add("anatomy-editor-svg");
@@ -2839,38 +2866,24 @@ var RegionEditorModal = class extends import_obsidian.Modal {
       if (hasBgImg) {
         this.svgEl.classList.add("anatomy-editor-svg-overlay");
       }
-      const overlay = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "g"
-      );
-      overlay.id = "editor-overlay";
-      this.svgEl.appendChild(overlay);
-      this.polygonPreview = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "polygon"
-      );
-      this.polygonPreview.setAttribute("fill", "rgba(250, 200, 0, 0.2)");
-      this.polygonPreview.setAttribute(
-        "stroke",
-        "rgba(250, 200, 0, 0.8)"
-      );
-      this.polygonPreview.setAttribute("stroke-width", "1.5");
-      this.polygonPreview.setAttribute("stroke-dasharray", "4,2");
+      const overlay = this.svgEl.createSvg("g", { attr: { id: "editor-overlay" } });
+      this.polygonPreview = overlay.createSvg("polygon", {
+        attr: {
+          fill: "rgba(250, 200, 0, 0.2)",
+          stroke: "rgba(250, 200, 0, 0.8)",
+          "stroke-width": "1.5",
+          "stroke-dasharray": "4,2"
+        }
+      });
       this.polygonPreview.style.pointerEvents = "none";
-      overlay.appendChild(this.polygonPreview);
-      this.pointsGroup = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "g"
-      );
-      this.pointsGroup.id = "editor-points";
-      overlay.appendChild(this.pointsGroup);
+      this.pointsGroup = overlay.createSvg("g", { attr: { id: "editor-points" } });
       this.svgEl.addEventListener(
         "click",
         (e) => this.handleClick(e)
       );
       this.svgEl.addEventListener("dblclick", (e) => {
         e.preventDefault();
-        this.finish();
+        void this.finish();
       });
       this.updatePreview();
     }
@@ -2897,7 +2910,9 @@ var RegionEditorModal = class extends import_obsidian.Modal {
       text: "\u5B8C\u6210",
       cls: "mod-cta"
     });
-    finishBtn.addEventListener("click", () => this.finish());
+    finishBtn.addEventListener("click", () => {
+      void this.finish();
+    });
     this.updateCount();
   }
   /** 将屏幕坐标转换为 SVG viewBox 坐标 */
@@ -2922,11 +2937,11 @@ var RegionEditorModal = class extends import_obsidian.Modal {
     if (!this.polygonPreview || !this.pointsGroup || !this.svgEl)
       return;
     const vb = this.svgEl.viewBox.baseVal;
-    const vbScale = vb.width > 0 ? Math.sqrt(vb.width) * 0.2 : 4;
-    const dotR = Math.max(1, vbScale);
-    const dotStroke = Math.max(0.3, vbScale * 0.25);
-    const fontSize = Math.max(3, vbScale * 2);
-    const textOffset = vbScale * 1.5;
+    const vbShort = Math.min(vb.width, vb.height) || 500;
+    const dotR = Math.min(6, Math.max(1, vbShort * 0.01));
+    const dotStroke = Math.max(0.3, dotR * 0.3);
+    const fontSize = Math.min(9, Math.max(5, dotR * 1.8));
+    const textOffset = dotR * 1.5;
     if (this.points.length >= 2) {
       this.polygonPreview.setAttribute(
         "points",
@@ -2936,31 +2951,29 @@ var RegionEditorModal = class extends import_obsidian.Modal {
     } else {
       this.polygonPreview.style.display = "none";
     }
-    this.pointsGroup.innerHTML = "";
+    this.pointsGroup.replaceChildren();
     this.points.forEach((pt, i) => {
-      const c = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      c.setAttribute("cx", String(pt.x));
-      c.setAttribute("cy", String(pt.y));
-      c.setAttribute("r", String(dotR));
-      c.setAttribute("fill", "#fac800");
-      c.setAttribute("stroke", "#fff");
-      c.setAttribute("stroke-width", String(dotStroke));
+      const c = this.pointsGroup.createSvg("circle", {
+        attr: {
+          cx: String(pt.x),
+          cy: String(pt.y),
+          r: String(dotR),
+          fill: "#fac800",
+          stroke: "#fff",
+          "stroke-width": String(dotStroke)
+        }
+      });
       c.style.pointerEvents = "none";
-      this.pointsGroup.appendChild(c);
-      const t = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "text"
-      );
-      t.setAttribute("x", String(pt.x + textOffset));
-      t.setAttribute("y", String(pt.y - textOffset));
-      t.setAttribute("fill", "#fac800");
-      t.setAttribute("font-size", String(fontSize));
+      const t = this.pointsGroup.createSvg("text", {
+        attr: {
+          x: String(pt.x + textOffset),
+          y: String(pt.y - textOffset),
+          fill: "#fac800",
+          "font-size": String(fontSize)
+        }
+      });
       t.style.pointerEvents = "none";
       t.textContent = String(i + 1);
-      this.pointsGroup.appendChild(t);
     });
   }
   updateCount() {
@@ -3163,7 +3176,7 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
       cls: "anatomy-editor-svg-wrapper"
     });
     this.annSvg = getAnnotationSVG(this.regionId);
-    svgContainer.innerHTML = this.annSvg.svg;
+    renderSvgInto(svgContainer, this.annSvg.svg);
     this.svgEl = svgContainer.querySelector("svg");
     if (this.svgEl) {
       this.svgEl.classList.add("anatomy-editor-svg");
@@ -3171,12 +3184,7 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
       this.svgEl.querySelectorAll("*").forEach((el) => {
         el.style.pointerEvents = "none";
       });
-      this.overlay = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "g"
-      );
-      this.overlay.id = "annotation-overlay";
-      this.svgEl.appendChild(this.overlay);
+      this.overlay = this.svgEl.createSvg("g", { attr: { id: "annotation-overlay" } });
       this.svgEl.addEventListener(
         "click",
         (e) => this.handleClick(e)
@@ -3202,7 +3210,9 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
       text: "\u5B8C\u6210",
       cls: "mod-cta"
     });
-    finishBtn.addEventListener("click", () => this.finish());
+    finishBtn.addEventListener("click", () => {
+      void this.finish();
+    });
     this.renderPoints();
     this.renderPointList();
   }
@@ -3242,57 +3252,53 @@ var PointAnnotationEditorModal = class extends import_obsidian.Modal {
   renderPoints() {
     if (!this.overlay || !this.annSvg || !this.svgEl)
       return;
-    this.overlay.innerHTML = "";
+    this.overlay.replaceChildren();
     const vb = this.svgEl.viewBox.baseVal;
-    const vbScale = vb.width > 0 ? Math.sqrt(vb.width) * 0.2 : 4;
-    const dotR = Math.max(1.5, vbScale * 1.5);
-    const dotRSelected = Math.max(2, vbScale * 2);
-    const dotStroke = Math.max(0.5, vbScale * 0.5);
-    const fontSize = Math.max(4, vbScale * 2.5);
-    const textOffset = vbScale * 2;
+    const vbShort = Math.min(vb.width, vb.height) || 500;
+    const dotR = Math.min(4, Math.max(1, vbShort * 4e-3));
+    const dotRSelected = Math.min(6, dotR * 1.5);
+    const dotStroke = Math.max(0.4, dotR * 0.35);
+    const fontSize = Math.min(8, Math.max(5, dotR * 1.6));
+    const textOffset = dotR * 1.6;
     for (const point of this.points) {
       const isSelected = point.id === this.selectedId;
       const [dx, dy] = this.annSvg.fromBody(point.x, point.y);
-      const c = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      c.setAttribute("cx", String(dx));
-      c.setAttribute("cy", String(dy));
-      c.setAttribute("r", isSelected ? String(dotRSelected) : String(dotR));
-      c.setAttribute("fill", isSelected ? "#c0392b" : "#e74c3c");
-      c.setAttribute("stroke", "#fff");
-      c.setAttribute("stroke-width", String(dotStroke));
+      const c = this.overlay.createSvg("circle", {
+        attr: {
+          cx: String(dx),
+          cy: String(dy),
+          r: isSelected ? String(dotRSelected) : String(dotR),
+          fill: isSelected ? "#c0392b" : "#e74c3c",
+          stroke: "#fff",
+          "stroke-width": String(dotStroke)
+        },
+        cls: isSelected ? "anatomy-annotation-pulse" : void 0
+      });
       c.style.pointerEvents = "auto";
       c.style.cursor = "pointer";
-      if (isSelected) {
-        c.classList.add("anatomy-annotation-pulse");
-      }
       c.addEventListener("click", (ev) => {
         ev.stopPropagation();
         this.selectedId = point.id;
         this.renderPoints();
         this.renderPointList();
       });
-      this.overlay.appendChild(c);
-      const t = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "text"
-      );
-      t.setAttribute("x", String(dx + textOffset));
-      t.setAttribute("y", String(dy - textOffset));
-      t.setAttribute("fill", "#e74c3c");
-      t.setAttribute("font-size", String(fontSize));
+      const t = this.overlay.createSvg("text", {
+        attr: {
+          x: String(dx + textOffset),
+          y: String(dy - textOffset),
+          fill: "#e74c3c",
+          "font-size": String(fontSize)
+        }
+      });
       t.style.pointerEvents = "none";
       t.textContent = point.label;
-      this.overlay.appendChild(t);
     }
   }
   /** 渲染标注点列表 */
   renderPointList() {
     if (!this.listContainer)
       return;
-    this.listContainer.innerHTML = "";
+    this.listContainer.replaceChildren();
     this.points.forEach((point, i) => {
       const row = this.listContainer.createDiv({
         cls: "anatomy-annotation-row"
@@ -3635,7 +3641,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
           const srcY = (localBB.y - mOffsetY) / mScale;
           const srcW = localBB.w / mScale;
           const srcH = localBB.h / mScale;
-          const canvas = document.createElement("canvas");
+          const canvas = createDiv().createEl("canvas");
           canvas.width = OUT;
           canvas.height = OUT;
           const ctx = canvas.getContext("2d");
@@ -3707,7 +3713,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
           const srcY = (localBB.y - mOffsetY) / mScale;
           const srcW = localBB.w / mScale;
           const srcH = localBB.h / mScale;
-          const canvas = document.createElement("canvas");
+          const canvas = createDiv().createEl("canvas");
           canvas.width = OUT;
           canvas.height = OUT;
           const ctx = canvas.getContext("2d");
@@ -3760,7 +3766,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
         im.onerror = reject;
         im.src = url;
       });
-      const canvas = document.createElement("canvas");
+      const canvas = createDiv().createEl("canvas");
       canvas.width = OUT;
       canvas.height = OUT;
       const ctx = canvas.getContext("2d");
@@ -3796,11 +3802,10 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
   /** 打开文件选择框，读取上传的图片为 dataURL（限制大小） */
   static async pickAndReadImage(container) {
     return new Promise((resolve) => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
+      const input = container.createEl("input", {
+        attr: { type: "file", accept: "image/*" }
+      });
       input.style.display = "none";
-      container.appendChild(input);
       input.onchange = async () => {
         var _a;
         const f = (_a = input.files) == null ? void 0 : _a[0];
@@ -3816,12 +3821,12 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
         reader.onerror = () => resolve(null);
         reader.readAsDataURL(f);
       };
-      setTimeout(() => {
+      window.setTimeout(() => {
         window.addEventListener(
           "focus",
           () => {
             if (input.parentElement)
-              setTimeout(() => input.remove(), 800);
+              window.setTimeout(() => input.remove(), 800);
           },
           { once: true }
         );
@@ -3833,11 +3838,13 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
   saveThumbnail(regionId, dataUrl, source) {
     if (!dataUrl) {
       delete this.plugin.settings.regionThumbnails[regionId];
-    } else {
+    } else if (isImageDataUrl(dataUrl)) {
       this.plugin.settings.regionThumbnails[regionId] = { dataUrl, source };
+    } else {
+      alert("\u793A\u610F\u56FE\u683C\u5F0F\u4E0D\u53D7\u652F\u6301\uFF08\u4EC5\u652F\u6301 PNG/JPEG/GIF/WebP\uFF09\uFF0C\u5DF2\u53D6\u6D88\u4FDD\u5B58");
     }
     setSettings(this.plugin.settings);
-    this.plugin.saveSettings();
+    void this.plugin.saveSettings();
   }
   /**
    * 在 setting-item 中附加分区示意图预览和操作按钮。
@@ -3871,14 +3878,16 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
       text: "\u4E0A\u4F20\u793A\u610F\u56FE",
       cls: "mod-cta anatomy-thumb-btn"
     });
-    uploadBtn.addEventListener("click", async () => {
-      const dataUrl = await AnatomyMapSettingTab.pickAndReadImage(
-        this.containerEl
-      );
-      if (dataUrl) {
-        this.saveThumbnail(regionId, dataUrl, "upload");
-        onChanged == null ? void 0 : onChanged();
-      }
+    uploadBtn.addEventListener("click", () => {
+      void (async () => {
+        const dataUrl = await AnatomyMapSettingTab.pickAndReadImage(
+          this.containerEl
+        );
+        if (dataUrl) {
+          this.saveThumbnail(regionId, dataUrl, "upload");
+          onChanged == null ? void 0 : onChanged();
+        }
+      })().catch((err) => console.error("thumbnail upload failed:", err));
     });
     const hasPoints = pointsForAuto.length >= 3;
     const autoBtn = btnGroup.createEl("button", {
@@ -3889,21 +3898,23 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
       autoBtn.disabled = true;
       autoBtn.title = "\u5148\u7ED8\u5236\u22653\u4E2A\u9876\u70B9\u540E\u624D\u80FD\u81EA\u52A8\u751F\u6210";
     }
-    autoBtn.addEventListener("click", async () => {
-      autoBtn.disabled = true;
-      autoBtn.setText("\u751F\u6210\u4E2D\u2026");
-      try {
-        const dataUrl = await this.generateAutoThumbnail(
-          regionId,
-          pointsForAuto
-        );
-        if (dataUrl)
-          this.saveThumbnail(regionId, dataUrl, "auto");
-      } finally {
-        autoBtn.setText("\u81EA\u52A8\u6846\u9009\u751F\u6210");
-        autoBtn.disabled = !hasPoints;
-        onChanged == null ? void 0 : onChanged();
-      }
+    autoBtn.addEventListener("click", () => {
+      void (async () => {
+        autoBtn.disabled = true;
+        autoBtn.setText("\u751F\u6210\u4E2D\u2026");
+        try {
+          const dataUrl = await this.generateAutoThumbnail(
+            regionId,
+            pointsForAuto
+          );
+          if (dataUrl)
+            this.saveThumbnail(regionId, dataUrl, "auto");
+        } finally {
+          autoBtn.setText("\u81EA\u52A8\u6846\u9009\u751F\u6210");
+          autoBtn.disabled = !hasPoints;
+          onChanged == null ? void 0 : onChanged();
+        }
+      })().catch((err) => console.error("auto thumbnail failed:", err));
     });
     if (thumb) {
       const clearBtn = btnGroup.createEl("button", {
@@ -3952,7 +3963,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
             };
             this.plugin.settings.regionPolygons.push(np);
             setSettings(this.plugin.settings);
-            this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             new RegionEditorModal(
               this.app,
               id,
@@ -4101,7 +4112,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
           }
         }
         setSettings(this.plugin.settings);
-        this.plugin.saveSettings();
+        void this.plugin.saveSettings();
         this.display();
       });
     }
@@ -4119,38 +4130,40 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
         text: "\u5168\u90E8\u5220\u9664",
         cls: "mod-warning anatomy-recycle-clear-all-btn"
       });
-      clearAllBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const confirmed = await showConfirmDialog(
-          this.app,
-          `\u6E05\u7A7A\u56DE\u6536\u7AD9\uFF1F`,
-          `\u5C06\u5F7B\u5E95\u5220\u9664\u56DE\u6536\u7AD9\u4E2D\u7684\u5168\u90E8 ${recycleIds.length} \u4E2A\u5206\u533A\uFF0C\u6B64\u64CD\u4F5C\u65E0\u6CD5\u64A4\u9500\u3002`
-        );
-        if (!confirmed)
-          return;
-        const recycleIdsSet = new Set(recycleIds);
-        for (const id of recycleIds) {
-          this.plugin.settings.regionPolygons = this.plugin.settings.regionPolygons.filter((p) => p.regionId !== id);
-          if (this.plugin.settings.regionThumbnails[id]) {
-            delete this.plugin.settings.regionThumbnails[id];
+      clearAllBtn.addEventListener("click", (e) => {
+        void (async () => {
+          e.stopPropagation();
+          const confirmed = await showConfirmDialog(
+            this.app,
+            `\u6E05\u7A7A\u56DE\u6536\u7AD9\uFF1F`,
+            `\u5C06\u5F7B\u5E95\u5220\u9664\u56DE\u6536\u7AD9\u4E2D\u7684\u5168\u90E8 ${recycleIds.length} \u4E2A\u5206\u533A\uFF0C\u6B64\u64CD\u4F5C\u65E0\u6CD5\u64A4\u9500\u3002`
+          );
+          if (!confirmed)
+            return;
+          const recycleIdsSet = new Set(recycleIds);
+          for (const id of recycleIds) {
+            this.plugin.settings.regionPolygons = this.plugin.settings.regionPolygons.filter((p) => p.regionId !== id);
+            if (this.plugin.settings.regionThumbnails[id]) {
+              delete this.plugin.settings.regionThumbnails[id];
+            }
+            this.plugin.settings.pointAnnotations = this.plugin.settings.pointAnnotations.filter((a) => a.regionId !== id);
+            if (this.plugin.settings.renamedRegions[id]) {
+              delete this.plugin.settings.renamedRegions[id];
+            }
+            this.plugin.settings.hiddenRegionIds = this.plugin.settings.hiddenRegionIds.filter((x) => x !== id);
+            if (getAllKnownRegionIds().has(id) && !this.plugin.settings.recycledRegionIds.includes(id)) {
+              this.plugin.settings.recycledRegionIds.push(id);
+            }
           }
-          this.plugin.settings.pointAnnotations = this.plugin.settings.pointAnnotations.filter((a) => a.regionId !== id);
-          if (this.plugin.settings.renamedRegions[id]) {
-            delete this.plugin.settings.renamedRegions[id];
-          }
-          this.plugin.settings.hiddenRegionIds = this.plugin.settings.hiddenRegionIds.filter((x) => x !== id);
-          if (getAllKnownRegionIds().has(id) && !this.plugin.settings.recycledRegionIds.includes(id)) {
-            this.plugin.settings.recycledRegionIds.push(id);
-          }
-        }
-        this.plugin.settings.regionPolygons.forEach((p) => {
-          if (p.parentRegionId && recycleIdsSet.has(p.parentRegionId)) {
-            p.parentRegionId = void 0;
-          }
-        });
-        setSettings(this.plugin.settings);
-        await this.plugin.saveSettings();
-        this.display();
+          this.plugin.settings.regionPolygons.forEach((p) => {
+            if (p.parentRegionId && recycleIdsSet.has(p.parentRegionId)) {
+              p.parentRegionId = void 0;
+            }
+          });
+          setSettings(this.plugin.settings);
+          await this.plugin.saveSettings();
+          this.display();
+        })().catch((err) => console.error("clear recycle bin failed:", err));
       });
       const content = containerEl.createDiv({
         cls: "anatomy-collapse-content anatomy-collapse-hidden anatomy-hidden-regions-content"
@@ -4186,46 +4199,48 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
             (id) => id !== hiddenId
           );
           setSettings(this.plugin.settings);
-          this.plugin.saveSettings();
+          void this.plugin.saveSettings();
           this.display();
         });
         const deleteBtn = ctrl.createEl("button", {
           text: "\u5F7B\u5E95\u5220\u9664",
           cls: "mod-warning"
         });
-        deleteBtn.addEventListener("click", async () => {
-          const isBuiltIn = getAllKnownRegionIds().has(hiddenId);
-          const allIds = [hiddenId, ...this.collectDescendantIds(hiddenId)];
-          const confirmed = await showConfirmDialog(
-            this.app,
-            `\u5F7B\u5E95\u5220\u9664\u300C${label}\u300D\uFF1F`,
-            allIds.length > 1 ? `\u5C06\u5F7B\u5E95\u5220\u9664\u6B64\u5206\u533A\u53CA\u5176 ${allIds.length - 1} \u4E2A\u5B50\u5206\u533A\uFF0C\u91CA\u653E\u6240\u6709ID\uFF0C\u6E05\u9664\u81EA\u5B9A\u4E49\u6570\u636E\u3002` : "\u5C06\u91CA\u653E\u6B64\u5206\u533AID\uFF0C\u6E05\u9664\u6240\u6709\u81EA\u5B9A\u4E49\u6570\u636E\uFF08\u591A\u8FB9\u5F62\u3001\u793A\u610F\u56FE\u3001\u6807\u6CE8\u3001\u91CD\u547D\u540D\uFF09\uFF0C\u53EF\u7528\u76F8\u540CID\u91CD\u65B0\u521B\u5EFA\u3002"
-          );
-          if (!confirmed)
-            return;
-          const allIdsSet = new Set(allIds);
-          for (const id of allIds) {
-            this.plugin.settings.regionPolygons = this.plugin.settings.regionPolygons.filter((p) => p.regionId !== id);
-            if (this.plugin.settings.regionThumbnails[id]) {
-              delete this.plugin.settings.regionThumbnails[id];
+        deleteBtn.addEventListener("click", () => {
+          void (async () => {
+            const isBuiltIn = getAllKnownRegionIds().has(hiddenId);
+            const allIds = [hiddenId, ...this.collectDescendantIds(hiddenId)];
+            const confirmed = await showConfirmDialog(
+              this.app,
+              `\u5F7B\u5E95\u5220\u9664\u300C${label}\u300D\uFF1F`,
+              allIds.length > 1 ? `\u5C06\u5F7B\u5E95\u5220\u9664\u6B64\u5206\u533A\u53CA\u5176 ${allIds.length - 1} \u4E2A\u5B50\u5206\u533A\uFF0C\u91CA\u653E\u6240\u6709ID\uFF0C\u6E05\u9664\u81EA\u5B9A\u4E49\u6570\u636E\u3002` : "\u5C06\u91CA\u653E\u6B64\u5206\u533AID\uFF0C\u6E05\u9664\u6240\u6709\u81EA\u5B9A\u4E49\u6570\u636E\uFF08\u591A\u8FB9\u5F62\u3001\u793A\u610F\u56FE\u3001\u6807\u6CE8\u3001\u91CD\u547D\u540D\uFF09\uFF0C\u53EF\u7528\u76F8\u540CID\u91CD\u65B0\u521B\u5EFA\u3002"
+            );
+            if (!confirmed)
+              return;
+            const allIdsSet = new Set(allIds);
+            for (const id of allIds) {
+              this.plugin.settings.regionPolygons = this.plugin.settings.regionPolygons.filter((p) => p.regionId !== id);
+              if (this.plugin.settings.regionThumbnails[id]) {
+                delete this.plugin.settings.regionThumbnails[id];
+              }
+              this.plugin.settings.pointAnnotations = this.plugin.settings.pointAnnotations.filter((a) => a.regionId !== id);
+              if (this.plugin.settings.renamedRegions[id]) {
+                delete this.plugin.settings.renamedRegions[id];
+              }
+              this.plugin.settings.hiddenRegionIds = this.plugin.settings.hiddenRegionIds.filter((x) => x !== id);
+              if (getAllKnownRegionIds().has(id) && !this.plugin.settings.recycledRegionIds.includes(id)) {
+                this.plugin.settings.recycledRegionIds.push(id);
+              }
             }
-            this.plugin.settings.pointAnnotations = this.plugin.settings.pointAnnotations.filter((a) => a.regionId !== id);
-            if (this.plugin.settings.renamedRegions[id]) {
-              delete this.plugin.settings.renamedRegions[id];
-            }
-            this.plugin.settings.hiddenRegionIds = this.plugin.settings.hiddenRegionIds.filter((x) => x !== id);
-            if (getAllKnownRegionIds().has(id) && !this.plugin.settings.recycledRegionIds.includes(id)) {
-              this.plugin.settings.recycledRegionIds.push(id);
-            }
-          }
-          this.plugin.settings.regionPolygons.forEach((p) => {
-            if (p.parentRegionId && allIdsSet.has(p.parentRegionId)) {
-              p.parentRegionId = void 0;
-            }
-          });
-          setSettings(this.plugin.settings);
-          await this.plugin.saveSettings();
-          this.display();
+            this.plugin.settings.regionPolygons.forEach((p) => {
+              if (p.parentRegionId && allIdsSet.has(p.parentRegionId)) {
+                p.parentRegionId = void 0;
+              }
+            });
+            setSettings(this.plugin.settings);
+            await this.plugin.saveSettings();
+            this.display();
+          })().catch((err) => console.error("delete hidden region failed:", err));
         });
       }
     }
@@ -4299,8 +4314,8 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
       btn.setButtonText("\u9009\u62E9\u5907\u4EFD\u6587\u4EF6").setWarning().onClick(() => {
         new RestoreBackupModal(
           this.app,
-          async (file) => {
-            await this.restoreBackup(file);
+          (file) => {
+            void this.restoreBackup(file).catch((err) => console.error("restore backup failed:", err));
           }
         ).open();
       });
@@ -4330,7 +4345,8 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
       }
       new import_obsidian.Notice(`\u5907\u4EFD\u5DF2\u4FDD\u5B58\u5230 ${filePath}`);
     } catch (err) {
-      new import_obsidian.Notice(`\u5907\u4EFD\u5931\u8D25\uFF1A${err.message || err}`);
+      const reason = err instanceof Error ? err.message : String(err);
+      new import_obsidian.Notice(`\u5907\u4EFD\u5931\u8D25\uFF1A${reason}`);
     }
   }
   /** 从备份文件恢复 */
@@ -4371,7 +4387,7 @@ var AnatomyMapSettingTab = class extends import_obsidian.PluginSettingTab {
   }
 };
 
-// src/view.ts
+// view.ts
 var VIEW_TYPE_ANATOMY_MAP = "anatomy-map-view";
 function parentBodyBBox(points) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -4400,20 +4416,20 @@ function getAnnotationSVG(regionId) {
   const childPolyHTML = (convert) => childPolys.map((p) => {
     const pts = p.points.map((pt) => {
       const [cx, cy] = convert ? convert(pt.x, pt.y) : [pt.x, pt.y];
-      return `${cx},${cy}`;
+      return `${Number(cx)},${Number(cy)}`;
     }).join(" ");
-    return `<g class="region" data-region="${p.regionId}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
+    return `<g class="region" data-region="${escapeSvgAttr(p.regionId)}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
   }).join("\n");
   const ownOutlineHTML = (convert) => {
     if (!polygon || polygon.points.length < 3)
       return "";
     const pts = polygon.points.map((pt) => {
       const [cx, cy] = convert ? convert(pt.x, pt.y) : [pt.x, pt.y];
-      return `${cx},${cy}`;
+      return `${Number(cx)},${Number(cy)}`;
     }).join(" ");
     return `<polygon points="${pts}" fill="none" stroke="#3498db" stroke-width="2.5" stroke-dasharray="4,2" stroke-opacity="0.85" stroke-linejoin="round" pointer-events="none"/>`;
   };
-  if (thumb && thumb.source === "upload") {
+  if (thumb && thumb.source === "upload" && isImageDataUrl(thumb.dataUrl)) {
     const cp2 = childPolyHTML((x, y) => [x, y]);
     const svg2 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" preserveAspectRatio="xMidYMid meet">
       <image href="${thumb.dataUrl}" x="0" y="0" width="500" height="500" preserveAspectRatio="xMidYMid meet"/>
@@ -4431,7 +4447,7 @@ function getAnnotationSVG(regionId) {
     } else {
       cp2 = "";
     }
-    if (parentThumb && parentThumb.source === "upload") {
+    if (parentThumb && parentThumb.source === "upload" && isImageDataUrl(parentThumb.dataUrl)) {
       const bb = subLocalPts.length >= 3 ? AnatomyMapSettingTab.bbox(subLocalPts) : { x: 0, y: 0, w: 500, h: 500 };
       const outline2 = ownOutlineHTML((x, y) => [x, y]);
       const svg2 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${bb.x} ${bb.y} ${bb.w} ${bb.h}" width="100%" preserveAspectRatio="xMidYMid meet">
@@ -4445,7 +4461,7 @@ function getAnnotationSVG(regionId) {
         fromBody: (x, y) => [x - bb.x, y - bb.y]
       };
     }
-    if (parentPoly && parentPoly.points.length >= 3 && parentThumb && parentThumb.source === "auto") {
+    if (parentPoly && parentPoly.points.length >= 3 && parentThumb && parentThumb.source === "auto" && isImageDataUrl(parentThumb.dataUrl)) {
       const pbb = parentBodyBBox(parentPoly.points);
       const bodyToParentLocal = (bx, by) => [
         (bx - pbb.x) / pbb.w * 500,
@@ -4480,16 +4496,17 @@ function getAnnotationSVG(regionId) {
       };
     }
   }
-  if (thumb && thumb.source === "auto" && polygon && polygon.points.length >= 3) {
+  if (polygon && polygon.points.length >= 3) {
     const bb = AnatomyMapSettingTab.bbox(polygon.points);
     const cleanSvg = getBodySVG([], [...settings.hiddenRegionIds, ...settings.recycledRegionIds]);
     const croppedSvg = cleanSvg.replace(
       /viewBox="([^"]*)"/,
       `viewBox="${bb.x} ${bb.y} ${bb.w} ${bb.h}"`
     );
+    let noGlowSvg = croppedSvg.replace(/filter:\s*url\(#[^)]+\)\s*;?/g, "").replace(/<filter[\s\S]*?<\/filter>/g, "");
     const cp2 = childPolyHTML((x, y) => [x, y]);
     const outline2 = ownOutlineHTML((x, y) => [x, y]);
-    const svg2 = croppedSvg.replace("</svg>", `${outline2}
+    const svg2 = noGlowSvg.replace("</svg>", `${outline2}
 ${cp2}
 </svg>`);
     return {
@@ -4508,7 +4525,7 @@ ${cp2}`;
 </svg>`) : preset;
     return { svg: svg2, toBody: (x, y) => [x, y], fromBody: (x, y) => [x, y] };
   }
-  const fallback = getBodySVG();
+  const fallback = getBodySVG().replace(/filter:\s*url\(#[^)]+\)\s*;?/g, "").replace(/<filter[\s\S]*?<\/filter>/g, "");
   const cp = childPolyHTML((x, y) => [x, y]);
   const outline = ownOutlineHTML((x, y) => [x, y]);
   const inject = `${outline}
@@ -4592,8 +4609,7 @@ var AnatomyMapView = class extends import_obsidian2.ItemView {
     } else if (this.currentView === "body") {
       const statsEl = this.mapRootEl.querySelector(".anatomy-stats span");
       if (statsEl) {
-        const totalNotes = Array.from(this.anatomyIndex.values()).reduce((a, b) => a + b.length, 0);
-        statsEl.textContent = `\u5DF2\u5173\u8054 ${totalNotes} \u7BC7\u7B14\u8BB0`;
+        statsEl.textContent = `\u5DF2\u5173\u8054 ${this.getTotalLinkedNoteCount()} \u7BC7\u7B14\u8BB0`;
       }
     }
   }
@@ -4621,16 +4637,18 @@ var AnatomyMapView = class extends import_obsidian2.ItemView {
     header.createEl("span", { text: "\u4EBA\u4F53\u89E3\u5256\u5B9A\u4F4D\u56FE", cls: "anatomy-title" });
     const svgContainer = root.createDiv({ cls: "anatomy-svg-wrapper" });
     const settings = getSettings();
-    svgContainer.innerHTML = getBodySVG(
-      settings.regionPolygons,
-      [...settings.hiddenRegionIds, ...settings.recycledRegionIds]
+    renderSvgInto(
+      svgContainer,
+      getBodySVG(
+        settings.regionPolygons,
+        [...settings.hiddenRegionIds, ...settings.recycledRegionIds]
+      )
     );
     const svgEl = svgContainer.querySelector("svg");
     if (svgEl)
       svgEl.classList.add("anatomy-svg");
     const stats = root.createDiv({ cls: "anatomy-stats" });
-    const totalNotes = Array.from(this.anatomyIndex.values()).reduce((a, b) => a + b.length, 0);
-    stats.createEl("span", { text: `\u5DF2\u5173\u8054 ${totalNotes} \u7BC7\u7B14\u8BB0` });
+    stats.createEl("span", { text: `\u5DF2\u5173\u8054 ${this.getTotalLinkedNoteCount()} \u7BC7\u7B14\u8BB0` });
     this.bindRegionClicks(svgContainer);
     this.renderDeepRegions(root);
   }
@@ -4742,39 +4760,17 @@ var AnatomyMapView = class extends import_obsidian2.ItemView {
     const settings = getSettings();
     const thumb = settings.regionThumbnails[regionId];
     const hasAnnotations = settings.pointAnnotations.some((a) => a.regionId === regionId);
-    if (thumb && !hasAnnotations) {
+    if (!hasAnnotations) {
       const header = root.createDiv({ cls: "anatomy-region-header" });
       const svgWrapper = header.createDiv({ cls: "anatomy-svg-wrapper" });
       const annSvg = getAnnotationSVG(regionId);
-      svgWrapper.innerHTML = annSvg.svg;
+      renderSvgInto(svgWrapper, annSvg.svg);
       const svgEl = svgWrapper.querySelector("svg");
-      if (svgEl)
+      if (svgEl) {
         svgEl.classList.add("anatomy-svg");
+      }
       this.bindRegionClicks(svgWrapper);
       header.createEl("div", { cls: "anatomy-region-title", text: region.label });
-    }
-    const svgHTML = thumb || hasAnnotations ? "" : getRegionSVG(regionId);
-    if (svgHTML) {
-      const hiddenSet = /* @__PURE__ */ new Set([...settings.hiddenRegionIds, ...settings.recycledRegionIds]);
-      const childPolys = settings.regionPolygons.filter(
-        (p) => p.parentRegionId === regionId && p.points.length >= 3 && !hiddenSet.has(p.regionId)
-      );
-      const childPolyHTML = childPolys.map((p) => {
-        const pts = p.points.map((pt) => `${pt.x},${pt.y}`).join(" ");
-        return `<g class="region" data-region="${p.regionId}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
-      }).join("\n");
-      const ownPoly = settings.regionPolygons.find((p) => p.regionId === regionId);
-      const ownOutline = ownPoly && ownPoly.points.length >= 3 ? `<polygon points="${ownPoly.points.map((pt) => `${pt.x},${pt.y}`).join(" ")}" fill="none" stroke="#3498db" stroke-width="3.5" stroke-dasharray="4,2" stroke-opacity="0.85" stroke-linejoin="round" pointer-events="none"/>` : "";
-      const inject = `${ownOutline}
-${childPolyHTML}`.trim();
-      const finalHTML = inject ? svgHTML.replace("</svg>", `${inject}
-</svg>`) : svgHTML;
-      const svgContainer = root.createDiv({ cls: "anatomy-svg-wrapper" });
-      svgContainer.innerHTML = finalHTML;
-      const svgEl = svgContainer.querySelector("svg");
-      if (svgEl)
-        svgEl.classList.add("anatomy-svg");
-      this.bindRegionClicks(svgContainer);
     }
     const listContainer = root.createDiv({ cls: "anatomy-note-list-container" });
     this.updateNoteList(regionId);
@@ -4971,10 +4967,12 @@ ${childPolyHTML}`.trim();
           const item = addList.createDiv({ cls: "anatomy-note-add-item" });
           item.createEl("span", { text: note.basename, cls: "anatomy-note-name" });
           item.createEl("span", { text: "+", cls: "anatomy-note-add-icon" });
-          item.addEventListener("click", async () => {
-            await this.associateNote(note, region);
-            this.refreshIndex();
-            this.updateNoteList(regionId);
+          item.addEventListener("click", () => {
+            void (async () => {
+              await this.associateNote(note, region);
+              this.refreshIndex();
+              this.updateNoteList(regionId);
+            })().catch((e) => console.error("associateNote failed:", e));
           });
         }
         if (filtered.length > MAX_RESULTS) {
@@ -5001,16 +4999,18 @@ ${childPolyHTML}`.trim();
         const col = i < Math.ceil(allFiles.length / 2) ? leftCol : rightCol;
         const item = col.createDiv({ cls: "anatomy-note-item" });
         const removeBtn = item.createEl("button", { cls: "anatomy-note-remove-item-btn", text: "\xD7" });
-        removeBtn.addEventListener("click", async (e) => {
-          e.stopPropagation();
-          await this.disassociateNote(file, region);
-          this.refreshIndex();
-          this.updateNoteList(regionId);
+        removeBtn.addEventListener("click", (e) => {
+          void (async () => {
+            e.stopPropagation();
+            await this.disassociateNote(file, region);
+            this.refreshIndex();
+            this.updateNoteList(regionId);
+          })().catch((err) => console.error("disassociateNote failed:", err));
         });
         item.createEl("span", { text: `${i + 1}.`, cls: "anatomy-note-index" });
         item.createEl("span", { text: file.basename, cls: "anatomy-note-name" });
         item.addEventListener("click", () => {
-          this.app.workspace.getLeaf(false).openFile(file);
+          void this.app.workspace.getLeaf(false).openFile(file);
         });
       });
     } else if (this.noteSortMode) {
@@ -5043,24 +5043,26 @@ ${childPolyHTML}`.trim();
         item.addEventListener("dragleave", () => {
           item.classList.remove("anatomy-drag-over");
         });
-        item.addEventListener("drop", async (e) => {
-          e.preventDefault();
-          item.classList.remove("anatomy-drag-over");
-          if (!this.draggedNotePath || this.draggedNotePath === file.path)
-            return;
-          const orderedPaths = allFiles.map((f) => f.path);
-          const fromIdx = orderedPaths.indexOf(this.draggedNotePath);
-          const toIdx = orderedPaths.indexOf(file.path);
-          if (fromIdx < 0 || toIdx < 0)
-            return;
-          const [moved] = orderedPaths.splice(fromIdx, 1);
-          orderedPaths.splice(toIdx, 0, moved);
-          const s = getSettings();
-          s.noteCustomOrder[regionId] = orderedPaths;
-          setSettings(s);
-          await saveSettingsData();
-          this.draggedNotePath = null;
-          this.updateNoteList(regionId);
+        item.addEventListener("drop", (e) => {
+          void (async () => {
+            e.preventDefault();
+            item.classList.remove("anatomy-drag-over");
+            if (!this.draggedNotePath || this.draggedNotePath === file.path)
+              return;
+            const orderedPaths = allFiles.map((f) => f.path);
+            const fromIdx = orderedPaths.indexOf(this.draggedNotePath);
+            const toIdx = orderedPaths.indexOf(file.path);
+            if (fromIdx < 0 || toIdx < 0)
+              return;
+            const [moved] = orderedPaths.splice(fromIdx, 1);
+            orderedPaths.splice(toIdx, 0, moved);
+            const s = getSettings();
+            s.noteCustomOrder[regionId] = orderedPaths;
+            setSettings(s);
+            await saveSettingsData();
+            this.draggedNotePath = null;
+            this.updateNoteList(regionId);
+          })().catch((err) => console.error("note reorder failed:", err));
         });
       });
     } else if (useCustomOrder) {
@@ -5086,7 +5088,7 @@ ${childPolyHTML}`.trim();
         item.createEl("span", { text: `${idx}.`, cls: "anatomy-note-index" });
         item.createEl("span", { text: file.basename, cls: "anatomy-note-name" });
         item.addEventListener("click", () => {
-          this.app.workspace.getLeaf(false).openFile(file);
+          void this.app.workspace.getLeaf(false).openFile(file);
         });
       });
     } else {
@@ -5098,7 +5100,7 @@ ${childPolyHTML}`.trim();
         item.createEl("span", { text: `${i + 1}.`, cls: "anatomy-note-index" });
         item.createEl("span", { text: file.basename, cls: "anatomy-note-name" });
         item.addEventListener("click", () => {
-          this.app.workspace.getLeaf(false).openFile(file);
+          void this.app.workspace.getLeaf(false).openFile(file);
         });
       });
     }
@@ -5144,34 +5146,45 @@ ${childPolyHTML}`.trim();
     const colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22", "#e91e63"];
     const svgWrapper = section.createDiv({ cls: "anatomy-annotation-svg-wrapper" });
     const annSvg = getAnnotationSVG(regionId);
-    svgWrapper.innerHTML = annSvg.svg;
+    renderSvgInto(svgWrapper, annSvg.svg);
     const svgEl = svgWrapper.querySelector("svg");
     if (svgEl) {
       svgEl.classList.add("anatomy-annotation-svg", "anatomy-svg");
       this.bindRegionClicks(svgWrapper);
-      const overlay = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      overlay.id = "annotation-overlay";
-      svgEl.appendChild(overlay);
+      const overlay = svgEl.createSvg("g", { attr: { id: "annotation-overlay" } });
+      const vb = svgEl.viewBox.baseVal;
+      const vbShort = Math.min(vb.width, vb.height) || 500;
+      const baseR = Math.min(10, Math.max(2, vbShort * 0.01));
+      const glowR = baseR * 1.6;
+      const strokeW = Math.max(0.6, baseR * 0.3);
+      const fontSize = Math.min(14, Math.max(8, baseR * 3));
+      const textOffsetX = baseR * 1.6;
+      const textOffsetY = baseR * 1.2;
       annotations.forEach((ann, i) => {
         const color = colors[i % colors.length];
         const [dx, dy] = annSvg.fromBody(ann.x, ann.y);
-        const glow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        glow.setAttribute("cx", String(dx));
-        glow.setAttribute("cy", String(dy));
-        glow.setAttribute("r", "10");
-        glow.setAttribute("fill", color);
-        glow.setAttribute("fill-opacity", "0.25");
-        glow.classList.add("anatomy-annotation-glow");
-        overlay.appendChild(glow);
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("cx", String(dx));
-        circle.setAttribute("cy", String(dy));
-        circle.setAttribute("r", "5");
-        circle.setAttribute("fill", color);
-        circle.setAttribute("stroke", "#fff");
-        circle.setAttribute("stroke-width", "1.5");
+        overlay.createSvg("circle", {
+          cls: "anatomy-annotation-glow",
+          attr: {
+            cx: String(dx),
+            cy: String(dy),
+            r: String(glowR),
+            fill: color,
+            "fill-opacity": "0.25"
+          }
+        });
+        const circle = overlay.createSvg("circle", {
+          cls: "anatomy-annotation-point",
+          attr: {
+            cx: String(dx),
+            cy: String(dy),
+            r: String(baseR),
+            fill: color,
+            stroke: "#fff",
+            "stroke-width": String(strokeW)
+          }
+        });
         circle.style.cursor = "pointer";
-        circle.classList.add("anatomy-annotation-point");
         circle.addEventListener("click", (ev) => {
           ev.stopPropagation();
           const paths = ann.notePaths || [];
@@ -5180,7 +5193,7 @@ ${childPolyHTML}`.trim();
           if (paths.length === 1) {
             const file = this.app.vault.getAbstractFileByPath(paths[0]);
             if (file instanceof import_obsidian2.TFile) {
-              this.app.workspace.getLeaf(false).openFile(file);
+              void this.app.workspace.getLeaf(false).openFile(file);
             }
             return;
           }
@@ -5192,29 +5205,24 @@ ${childPolyHTML}`.trim();
               item.setTitle(name);
               item.onClick(() => {
                 if (f instanceof import_obsidian2.TFile) {
-                  this.app.workspace.getLeaf(false).openFile(f);
+                  void this.app.workspace.getLeaf(false).openFile(f);
                 }
               });
             });
           }
           menu.showAtMouseEvent(ev);
         });
-        circle.addEventListener("mouseenter", () => {
-          circle.setAttribute("r", "7");
+        const numText = overlay.createSvg("text", {
+          attr: {
+            x: String(dx + textOffsetX),
+            y: String(dy - textOffsetY),
+            fill: color,
+            "font-size": String(fontSize),
+            "font-weight": "bold"
+          }
         });
-        circle.addEventListener("mouseleave", () => {
-          circle.setAttribute("r", "5");
-        });
-        overlay.appendChild(circle);
-        const numText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        numText.setAttribute("x", String(dx + 8));
-        numText.setAttribute("y", String(dy - 6));
-        numText.setAttribute("fill", color);
-        numText.setAttribute("font-size", "13");
-        numText.setAttribute("font-weight", "bold");
         numText.style.pointerEvents = "none";
         numText.textContent = `${i + 1}`;
-        overlay.appendChild(numText);
       });
     }
     const legend = section.createDiv({ cls: "anatomy-annotation-legend" });
@@ -5246,28 +5254,30 @@ ${childPolyHTML}`.trim();
         group.addEventListener("dragleave", () => {
           group.classList.remove("anatomy-drag-over");
         });
-        group.addEventListener("drop", async (e) => {
-          e.preventDefault();
-          group.classList.remove("anatomy-drag-over");
-          if (!this.draggedAnnId || this.draggedAnnId === ann.id)
-            return;
-          const s = getSettings();
-          const regionAnns = s.pointAnnotations.filter((a) => a.regionId === regionId);
-          const fromIdx = regionAnns.findIndex((a) => a.id === this.draggedAnnId);
-          const toIdx = regionAnns.findIndex((a) => a.id === ann.id);
-          if (fromIdx < 0 || toIdx < 0)
-            return;
-          const [moved] = regionAnns.splice(fromIdx, 1);
-          regionAnns.splice(toIdx, 0, moved);
-          const regionIdSet = new Set(regionAnns.map((a) => a.id));
-          s.pointAnnotations = [
-            ...s.pointAnnotations.filter((a) => !regionIdSet.has(a.id)),
-            ...regionAnns
-          ];
-          setSettings(s);
-          await saveSettingsData();
-          this.draggedAnnId = null;
-          this.renderView(true);
+        group.addEventListener("drop", (e) => {
+          void (async () => {
+            e.preventDefault();
+            group.classList.remove("anatomy-drag-over");
+            if (!this.draggedAnnId || this.draggedAnnId === ann.id)
+              return;
+            const s = getSettings();
+            const regionAnns = s.pointAnnotations.filter((a) => a.regionId === regionId);
+            const fromIdx = regionAnns.findIndex((a) => a.id === this.draggedAnnId);
+            const toIdx = regionAnns.findIndex((a) => a.id === ann.id);
+            if (fromIdx < 0 || toIdx < 0)
+              return;
+            const [moved] = regionAnns.splice(fromIdx, 1);
+            regionAnns.splice(toIdx, 0, moved);
+            const regionIdSet = new Set(regionAnns.map((a) => a.id));
+            s.pointAnnotations = [
+              ...s.pointAnnotations.filter((a) => !regionIdSet.has(a.id)),
+              ...regionAnns
+            ];
+            setSettings(s);
+            await saveSettingsData();
+            this.draggedAnnId = null;
+            this.renderView(true);
+          })().catch((err) => console.error("annotation reorder failed:", err));
         });
       }
       const header2 = group.createDiv({ cls: "anatomy-annotation-legend-header" });
@@ -5280,14 +5290,16 @@ ${childPolyHTML}`.trim();
       });
       if (this.annotationSortMode)
         labelInput.setAttribute("disabled", "true");
-      labelInput.addEventListener("change", async () => {
-        const s = getSettings();
-        const target = s.pointAnnotations.find((a) => a.id === ann.id);
-        if (target) {
-          target.label = labelInput.value.trim() || `\u6807\u6CE8 ${i + 1}`;
-          labelInput.value = target.label;
-          await saveSettingsData();
-        }
+      labelInput.addEventListener("change", () => {
+        void (async () => {
+          const s = getSettings();
+          const target = s.pointAnnotations.find((a) => a.id === ann.id);
+          if (target) {
+            target.label = labelInput.value.trim() || `\u6807\u6CE8 ${i + 1}`;
+            labelInput.value = target.label;
+            await saveSettingsData();
+          }
+        })().catch((err) => console.error("annotation rename failed:", err));
       });
       const notesWrap = group.createDiv({ cls: "anatomy-annotation-legend-notes anatomy-two-col" });
       const paths = ann.notePaths || [];
@@ -5312,7 +5324,7 @@ ${childPolyHTML}`.trim();
           });
           if (noteFile instanceof import_obsidian2.TFile) {
             noteItem.addEventListener("click", () => {
-              this.app.workspace.getLeaf(false).openFile(noteFile);
+              void this.app.workspace.getLeaf(false).openFile(noteFile);
             });
           }
         });
@@ -5469,6 +5481,75 @@ ${childPolyHTML}`.trim();
     }
     return aliases;
   }
+  /** 当前所有可见分区（非隐藏/非回收）；getRegion 已合并自定义多边形别名/标签与重命名（加固 #F1-P3） */
+  getVisibleRegions() {
+    const s = getSettings();
+    const hidden = /* @__PURE__ */ new Set([...s.hiddenRegionIds, ...s.recycledRegionIds]);
+    const ids = [];
+    for (const r of flattenAllRegions(BODY_REGIONS)) {
+      if (!hidden.has(r.id))
+        ids.push(r.id);
+    }
+    for (const p of s.regionPolygons) {
+      if (!hidden.has(p.regionId) && !ids.includes(p.regionId))
+        ids.push(p.regionId);
+    }
+    const regions = [];
+    for (const id of ids) {
+      const region = this.getRegion(id);
+      if (region)
+        regions.push(region);
+    }
+    return regions;
+  }
+  /** 收集分区自身及其可见子孙分区 ID（region 由 getRegion 构建，已含自定义子分区并过滤隐藏/回收，加固 #F1-P2） */
+  collectRegionIds(region) {
+    const ids = /* @__PURE__ */ new Set();
+    const walk = (r) => {
+      ids.add(r.id);
+      if (r.children)
+        for (const c of r.children)
+          walk(c);
+    };
+    walk(region);
+    return ids;
+  }
+  /** notePath 是否指向 vault 中实际存在的笔记（加固 #F1-P4：重命名/删除后的悬空路径不计入） */
+  isExistingNote(path) {
+    return this.app.vault.getAbstractFileByPath(path) instanceof import_obsidian2.TFile;
+  }
+  /**
+   * 全库"已关联笔记"总数（加固 #F1-P1/P3/P4）：
+   * 双源合并——frontmatter anatomy（anatomyIndex）+ 选点标注（pointAnnotations.notePaths），
+   * 按唯一笔记路径去重；仅统计可见分区上的关联；悬空 notePaths 不计。
+   * 主视图 stats 初次渲染与 vault 事件增量刷新共用此方法，杜绝口径分叉。
+   */
+  getTotalLinkedNoteCount() {
+    const notePaths = /* @__PURE__ */ new Set();
+    const visibleRegions = this.getVisibleRegions();
+    const visibleIds = new Set(visibleRegions.map((r) => r.id));
+    const visibleAliases = /* @__PURE__ */ new Set();
+    for (const r of visibleRegions) {
+      visibleAliases.add(r.label);
+      for (const a of r.aliases)
+        visibleAliases.add(a);
+    }
+    for (const [alias, files] of this.anatomyIndex) {
+      if (!visibleAliases.has(alias))
+        continue;
+      for (const f of files)
+        notePaths.add(f.path);
+    }
+    for (const ann of getSettings().pointAnnotations) {
+      if (!visibleIds.has(ann.regionId))
+        continue;
+      for (const p of ann.notePaths || []) {
+        if (!notePaths.has(p) && this.isExistingNote(p))
+          notePaths.add(p);
+      }
+    }
+    return notePaths.size;
+  }
   /** 统计区域关联笔记数 */
   countNotesForRegion(region) {
     const aliases = this.collectAliases(region);
@@ -5478,6 +5559,16 @@ ${childPolyHTML}`.trim();
       if (files) {
         for (const f of files)
           allFiles.add(f);
+      }
+    }
+    const subtreeIds = this.collectRegionIds(region);
+    for (const ann of getSettings().pointAnnotations) {
+      if (!subtreeIds.has(ann.regionId))
+        continue;
+      for (const p of ann.notePaths || []) {
+        const file = this.app.vault.getAbstractFileByPath(p);
+        if (file instanceof import_obsidian2.TFile)
+          allFiles.add(file);
       }
     }
     return allFiles.size;
@@ -5493,12 +5584,14 @@ ${childPolyHTML}`.trim();
 // main.ts
 var AnatomyMapPlugin = class extends import_obsidian3.Plugin {
   async onload() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded != null ? loaded : {});
     if (Array.isArray(this.settings.pointAnnotations)) {
       for (const pa of this.settings.pointAnnotations) {
-        if (pa.notePath !== void 0 && !pa.notePaths) {
-          pa.notePaths = pa.notePath ? [pa.notePath] : [];
-          delete pa.notePath;
+        const legacy = pa;
+        if (legacy.notePath !== void 0 && !legacy.notePaths) {
+          legacy.notePaths = legacy.notePath ? [legacy.notePath] : [];
+          delete legacy.notePath;
         }
       }
     }
@@ -5512,13 +5605,16 @@ var AnatomyMapPlugin = class extends import_obsidian3.Plugin {
       (leaf) => new AnatomyMapView(leaf)
     );
     this.addRibbonIcon("heart", "\u4EBA\u4F53\u89E3\u5256\u5B9A\u4F4D\u56FE", () => {
-      this.activateView();
+      void this.activateView();
     });
-    this.addCommand({
-      id: "open-anatomy-map",
+    const openCommand = {
       name: "\u6253\u5F00\u4EBA\u4F53\u89E3\u5256\u5B9A\u4F4D\u56FE",
-      callback: () => this.activateView()
-    });
+      callback: () => {
+        void this.activateView();
+      }
+    };
+    this.addCommand({ id: "open", ...openCommand });
+    this.addCommand({ id: "open-anatomy-map", name: `${openCommand.name}\uFF08\u517C\u5BB9\u65E7\u70ED\u952E\uFF09`, callback: openCommand.callback });
     this.registerMarkdownCodeBlockProcessor("anatomy-map", (source, el, ctx) => {
       this.renderCodeblockMap(el, ctx.sourcePath);
     });
@@ -5596,52 +5692,54 @@ var AnatomyMapPlugin = class extends import_obsidian3.Plugin {
       header.createEl("span", { text: label, cls: "anatomy-codeblock-title" });
       const svgWrapper = container.createDiv({ cls: "anatomy-codeblock-svg" });
       const annSvg = getAnnotationSVG(regionId);
-      svgWrapper.innerHTML = annSvg.svg;
+      renderSvgInto(svgWrapper, annSvg.svg);
       const annotations = settings.pointAnnotations.filter((a) => a.regionId === regionId);
-      const svgEl = svgWrapper.querySelector("svg");
-      if (svgEl && annotations.length > 0) {
+      const svgRoot = svgWrapper.querySelector("svg");
+      if (svgRoot && annotations.length > 0) {
         const colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22", "#e91e63"];
         annotations.forEach((ann, i) => {
           const color = colors[i % colors.length];
           const [dx, dy] = annSvg.fromBody(ann.x, ann.y);
           const isCurrentNote = (ann.notePaths || []).includes(notePath);
-          const glow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          glow.setAttribute("cx", String(dx));
-          glow.setAttribute("cy", String(dy));
-          glow.setAttribute("r", isCurrentNote ? "12" : "8");
-          glow.setAttribute("fill", color);
-          glow.setAttribute("fill-opacity", isCurrentNote ? "0.3" : "0.15");
-          if (isCurrentNote)
-            glow.classList.add("anatomy-codeblock-glow");
-          svgEl.appendChild(glow);
-          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          circle.setAttribute("cx", String(dx));
-          circle.setAttribute("cy", String(dy));
-          circle.setAttribute("r", isCurrentNote ? "6" : "4");
-          circle.setAttribute("fill", color);
-          circle.setAttribute("stroke", "#fff");
-          circle.setAttribute("stroke-width", "1.5");
+          svgRoot.createSvg("circle", {
+            attr: {
+              cx: String(dx),
+              cy: String(dy),
+              r: isCurrentNote ? "12" : "8",
+              fill: color,
+              "fill-opacity": isCurrentNote ? "0.3" : "0.15"
+            },
+            cls: isCurrentNote ? "anatomy-codeblock-glow" : void 0
+          });
+          svgRoot.createSvg("circle", {
+            attr: {
+              cx: String(dx),
+              cy: String(dy),
+              r: isCurrentNote ? "6" : "4",
+              fill: color,
+              stroke: "#fff",
+              "stroke-width": isCurrentNote ? "2.5" : "1.5"
+            },
+            cls: isCurrentNote ? "anatomy-codeblock-point-active" : void 0
+          });
           if (isCurrentNote) {
-            circle.setAttribute("stroke-width", "2.5");
-            circle.classList.add("anatomy-codeblock-point-active");
-          }
-          svgEl.appendChild(circle);
-          if (isCurrentNote) {
-            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-            text.setAttribute("x", String(dx + 10));
-            text.setAttribute("y", String(dy + 5));
-            text.setAttribute("fill", color);
-            text.setAttribute("font-size", "14");
-            text.setAttribute("font-weight", "600");
+            const text = svgRoot.createSvg("text", {
+              attr: {
+                x: String(dx + 10),
+                y: String(dy + 5),
+                fill: color,
+                "font-size": "14",
+                "font-weight": "600"
+              }
+            });
             text.textContent = ann.label || `\u70B9${i + 1}`;
-            svgEl.appendChild(text);
           }
         });
       }
       container.classList.add("anatomy-codeblock-clickable");
       container.addEventListener("click", () => {
-        this.activateView();
-        setTimeout(() => {
+        void this.activateView();
+        window.setTimeout(() => {
           const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_ANATOMY_MAP);
           if (leaves.length > 0) {
             const view = leaves[0].view;
@@ -5663,9 +5761,9 @@ var AnatomyMapPlugin = class extends import_obsidian3.Plugin {
       }
     });
   }
-  onunload() {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_ANATOMY_MAP);
-  }
+  // 加固 #Q2-P2【S1】：删除 onunload 中的 detachLeavesOfType——Obsidian 卸载插件时
+  // 自动关闭其视图并恢复用户自定义工作区布局，手动 detach 会强制重置用户布局
+  // （review Error "Don't detach leaves in onunload"）；无其余清理职责，整个方法移除。
   async activateView() {
     const { workspace } = this.app;
     let leaf = null;
@@ -5679,6 +5777,6 @@ var AnatomyMapPlugin = class extends import_obsidian3.Plugin {
       await leaf.setViewState({ type: VIEW_TYPE_ANATOMY_MAP, active: true });
     }
     if (leaf)
-      workspace.revealLeaf(leaf);
+      workspace.setActiveLeaf(leaf, { focus: true });
   }
 };

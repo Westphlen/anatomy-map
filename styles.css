@@ -131,6 +131,10 @@
   width: 100%;
   max-width: 260px;
   height: auto;
+  /* 加固 #F2-P3：阻断 Obsidian 主题对插件 SVG 的 invert/hue-rotate 等滤镜，
+     避免人体器官填色被反转为紫色/荧光色 */
+  filter: none !important;
+  color-scheme: light;
 }
 
 /* 外轮廓 - 柔和矢量线条 */
@@ -157,28 +161,7 @@
   pointer-events: visiblePainted;
 }
 
-/* hover 时：所有形状加描边 + 适度增亮（保留原有彩色）*/
-.anatomy-svg .region:hover path,
-.anatomy-svg .region:hover polygon,
-.anatomy-svg .region:hover rect,
-.anatomy-svg .region:hover ellipse,
-.anatomy-svg .region:hover circle {
-  stroke: var(--interactive-accent);
-  stroke-width: 1.8;
-  stroke-opacity: 0.95;
-  stroke-linejoin: round;
-  filter: brightness(1.18) saturate(1.25);
-}
-
-/* 针对 fill=transparent/none 的纯命中区域（如 abdomen），再叠加半透明填充光 */
-.anatomy-svg .region:hover path[fill="transparent"],
-.anatomy-svg .region:hover path[fill="none"],
-.anatomy-svg .region:hover polygon[fill="transparent"],
-.anatomy-svg .region:hover polygon[fill="none"] {
-  fill: var(--interactive-accent);
-  fill-opacity: 0.28;
-  filter: none;
-}
+/* 加固 #F2-P3：删除 SVG 区域悬停显示逻辑，避免 filter 与主题叠加产生紫色荧光 */
 
 .anatomy-svg .spine-line {
   stroke: var(--text-muted);
@@ -189,10 +172,6 @@
 
 .anatomy-svg .spine-region {
   opacity: 0.3;
-}
-
-.anatomy-svg .spine-region:hover {
-  opacity: 0.6;
 }
 
 .anatomy-svg .region-label {
@@ -762,11 +741,13 @@
 
 .anatomy-annotation-glow {
   animation: anatomy-glow-pulse 2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 @keyframes anatomy-glow-pulse {
-  0%, 100% { fill-opacity: 0.15; r: 10; }
-  50% { fill-opacity: 0.35; r: 12; }
+  0%, 100% { fill-opacity: 0.15; transform: scale(1); }
+  50% { fill-opacity: 0.35; transform: scale(1.25); }
 }
 
 /* 图例列表（仿分区-笔记列表） */
@@ -1039,11 +1020,13 @@
 /* 编辑器中选中标注的脉冲动画 */
 .anatomy-annotation-pulse {
   animation: anatomy-editor-pulse 1.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 @keyframes anatomy-editor-pulse {
-  0%, 100% { r: 8; opacity: 1; }
-  50% { r: 10; opacity: 0.8; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.2); }
 }
 
 /* 编辑器列表中选中行高亮 */

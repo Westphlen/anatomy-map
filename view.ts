@@ -7,6 +7,8 @@ import { ItemView, WorkspaceLeaf, TFile, Menu } from 'obsidian';
 import { BODY_REGIONS, AnatomyRegion, buildAliasMap, findRegion, flattenAllRegions } from './anatomy-data';
 import { getBodySVG, getRegionSVG } from './svg-templates';
 import { getSettings, setSettings, AnatomyMapSettings, PointAnnotation, PointAnnotationEditorModal, saveSettingsData, AnatomyMapSettingTab } from './settings';
+// 加固 #Q2-P1【S1】：引入 DOM 安全写入工具与注入面过滤（dataUrl 白名单/属性转义）
+import { renderSvgInto, escapeSvgAttr, isImageDataUrl } from './dom-safe';
 
 export const VIEW_TYPE_ANATOMY_MAP = 'anatomy-map-view';
 
@@ -50,23 +52,25 @@ export function getAnnotationSVG(regionId: string): AnnotationSVGResult {
   const childPolyHTML = (convert?: (x: number, y: number) => [number, number]) =>
     childPolys
       .map((p) => {
+        // 加固 #Q2-P1【S1】：pts 数字强转 + regionId 属性转义，阻断模板注入
         const pts = p.points
           .map((pt) => {
             const [cx, cy] = convert ? convert(pt.x, pt.y) : [pt.x, pt.y];
-            return `${cx},${cy}`;
+            return `${Number(cx)},${Number(cy)}`;
           })
           .join(' ');
-        return `<g class="region" data-region="${p.regionId}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
+        return `<g class="region" data-region="${escapeSvgAttr(p.regionId)}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
       })
       .join('\n');
 
   /** 当前区域自身多边形的界域框选线（蓝色虚线、不可交互），用于在子分区图中明确其界域 */
   const ownOutlineHTML = (convert?: (x: number, y: number) => [number, number]): string => {
     if (!polygon || polygon.points.length < 3) return '';
+    // 加固 #Q2-P1【S1】：pts 数字强转
     const pts = polygon.points
       .map((pt) => {
         const [cx, cy] = convert ? convert(pt.x, pt.y) : [pt.x, pt.y];
-        return `${cx},${cy}`;
+        return `${Number(cx)},${Number(cy)}`;
       })
       .join(' ');
     return `<polygon points="${pts}" fill="none" stroke="#3498db" stroke-width="2.5" stroke-dasharray="4,2" stroke-opacity="0.85" stroke-linejoin="round" pointer-events="none"/>`;
@@ -74,7 +78,8 @@ export function getAnnotationSVG(regionId: string): AnnotationSVGResult {
 
   // ===== 上传缩略图（最高优先级）：以图片为底图，坐标沿用 500x500 SVG 坐标 =====
   // 用户上传缩略图时不再标注界域框选线（图片本身已明确界域）
-  if (thumb && thumb.source === 'upload') {
+  // 加固 #Q2-P1【S1】：dataUrl 白名单校验，不合格式视为无缩略图，回退低优先级渲染
+  if (thumb && thumb.source === 'upload' && isImageDataUrl(thumb.dataUrl)) {
     const cp = childPolyHTML((x, y) => [x, y]);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" preserveAspectRatio="xMidYMid meet">
       <image href="${thumb.dataUrl}" x="0" y="0" width="500" height="500" preserveAspectRatio="xMidYMid meet"/>
@@ -98,7 +103,7 @@ export function getAnnotationSVG(regionId: string): AnnotationSVGResult {
     }
 
     // ---- 分支A：父分区是上传缩略图（子分区 points 已在 0-500 空间，无需坐标换算）----
-    if (parentThumb && parentThumb.source === 'upload') {
+    if (parentThumb && parentThumb.source === 'upload' && isImageDataUrl(parentThumb.dataUrl)) {
       const bb = subLocalPts.length >= 3
         ? AnatomyMapSettingTab.bbox(subLocalPts)
         : { x: 0, y: 0, w: 500, h: 500 };
@@ -116,7 +121,7 @@ export function getAnnotationSVG(regionId: string): AnnotationSVGResult {
     }
 
     // ---- 分支B：父分区是自动缩略图（需 parentPoly.points 做坐标换算）----
-    if (parentPoly && parentPoly.points.length >= 3 && parentThumb && parentThumb.source === 'auto') {
+    if (parentPoly && parentPoly.points.length >= 3 && parentThumb && parentThumb.source === 'auto' && isImageDataUrl(parentThumb.dataUrl)) {
       const pbb = parentBodyBBox(parentPoly.points);
       const bodyToParentLocal = (bx: number, by: number): [number, number] => [
         ((bx - pbb.x) / pbb.w) * 500,
@@ -156,17 +161,25 @@ export function getAnnotationSVG(regionId: string): AnnotationSVGResult {
     }
   }
 
-  // ===== 自动框选缩略图：基于多边形 bbox 裁剪人体 SVG（顶级分区 / 无父缩略图）=====
-  if (thumb && thumb.source === 'auto' && polygon && polygon.points.length >= 3) {
+  // ===== 自动框选：基于多边形 bbox 裁剪人体 SVG（顶级分区 / 无父缩略图）=====
+  // 加固 #F2-P1：不再要求 thumb 存在，有 polygon 即渲染，
+  // 确保无缩略图但有子分区的分区仍能显示下钻入口
+  // 加固 #F2-P3：裁剪人体 SVG 后通过后处理隐藏内部器官线条，仅保留外轮廓作干净底图
+  if (polygon && polygon.points.length >= 3) {
     const bb = AnatomyMapSettingTab.bbox(polygon.points);
     const cleanSvg = getBodySVG([], [...settings.hiddenRegionIds, ...settings.recycledRegionIds]);
     const croppedSvg = cleanSvg.replace(
       /viewBox="([^"]*)"/,
       `viewBox="${bb.x} ${bb.y} ${bb.w} ${bb.h}"`,
     );
+    // 加固 #F2-P3：移除人体 SVG 中的荧光/发光滤镜（outer-glow、luminosity 等），
+    // 内部线条正常显示但无高亮效果。同时移除 filter 引用和定义，确保彻底失效。
+    let noGlowSvg = croppedSvg
+      .replace(/filter:\s*url\(#[^)]+\)\s*;?/g, '')
+      .replace(/<filter[\s\S]*?<\/filter>/g, '');
     const cp = childPolyHTML((x, y) => [x, y]);
     const outline = ownOutlineHTML((x, y) => [x, y]);
-    const svg = croppedSvg.replace('</svg>', `${outline}\n${cp}\n</svg>`);
+    const svg = noGlowSvg.replace('</svg>', `${outline}\n${cp}\n</svg>`);
     return {
       svg,
       toBody: (x, y) => [x + bb.x, y + bb.y],
@@ -175,6 +188,8 @@ export function getAnnotationSVG(regionId: string): AnnotationSVGResult {
   }
 
   // ===== 预设 SVG 详图 =====
+  // 加固 #F2-P3 局限记录：预设 SVG（上肢/下肢/胸腹等）内部含骨骼纹理，
+  // 当前版本暂不处理，保持原样显示。后续如需仅保留外轮廓，可启用后处理。
   const preset = getRegionSVG(regionId);
   if (preset) {
     const cp = childPolyHTML((x, y) => [x, y]);
@@ -185,7 +200,10 @@ export function getAnnotationSVG(regionId: string): AnnotationSVGResult {
   }
 
   // ===== 兜底：人体总图 =====
-  const fallback = getBodySVG();
+  // 加固 #F2-P3：移除荧光/发光滤镜，内部线条正常显示但无高亮
+  const fallback = getBodySVG()
+    .replace(/filter:\s*url\(#[^)]+\)\s*;?/g, '')
+    .replace(/<filter[\s\S]*?<\/filter>/g, '');
   const cp = childPolyHTML((x, y) => [x, y]);
   const outline = ownOutlineHTML((x, y) => [x, y]);
   const inject = `${outline}\n${cp}`;
@@ -251,9 +269,10 @@ export class AnatomyMapView extends ItemView {
     const files = this.app.vault.getMarkdownFiles();
     for (const file of files) {
       const cache = this.app.metadataCache.getFileCache(file);
-      const anatomy = cache?.frontmatter?.anatomy;
+      // 加固 #Q3-P1【S2】：frontmatter 索引签名为 any，先收为 unknown 再窄化
+      const anatomy: unknown = cache?.frontmatter?.anatomy;
       if (!anatomy) continue;
-      const values = Array.isArray(anatomy) ? anatomy : [anatomy];
+      const values: unknown[] = Array.isArray(anatomy) ? anatomy : [anatomy];
       for (const val of values) {
         const key = String(val).trim();
         if (!key) continue;
@@ -268,8 +287,8 @@ export class AnatomyMapView extends ItemView {
       // 主视图：更新已关联笔记数统计
       const statsEl = this.mapRootEl.querySelector('.anatomy-stats span');
       if (statsEl) {
-        const totalNotes = Array.from(this.anatomyIndex.values()).reduce((a, b) => a + b.length, 0);
-        statsEl.textContent = `已关联 ${totalNotes} 篇笔记`;
+        // 加固 #F1-P1：双源合并 + 唯一去重（frontmatter + 选点标注），替代原跨 key 直接求和
+        statsEl.textContent = `已关联 ${this.getTotalLinkedNoteCount()} 篇笔记`;
       }
     }
   }
@@ -304,17 +323,21 @@ export class AnatomyMapView extends ItemView {
     // SVG容器（默认正面）
     const svgContainer = root.createDiv({ cls: 'anatomy-svg-wrapper' });
     const settings = getSettings();
-    svgContainer.innerHTML = getBodySVG(
-      settings.regionPolygons,
-      [...settings.hiddenRegionIds, ...settings.recycledRegionIds],
+    // 加固 #Q2-P1【S1】：innerHTML → DOMParser 安全渲染（dom-safe.ts）
+    renderSvgInto(
+      svgContainer,
+      getBodySVG(
+        settings.regionPolygons,
+        [...settings.hiddenRegionIds, ...settings.recycledRegionIds],
+      ),
     );
     const svgEl = svgContainer.querySelector('svg');
     if (svgEl) svgEl.classList.add('anatomy-svg');
 
     // 统计信息
     const stats = root.createDiv({ cls: 'anatomy-stats' });
-    const totalNotes = Array.from(this.anatomyIndex.values()).reduce((a, b) => a + b.length, 0);
-    stats.createEl('span', { text: `已关联 ${totalNotes} 篇笔记` });
+    // 加固 #F1-P1：双源合并 + 唯一去重（frontmatter + 选点标注），替代原跨 key 直接求和
+    stats.createEl('span', { text: `已关联 ${this.getTotalLinkedNoteCount()} 篇笔记` });
 
     // 绑定区域点击
     this.bindRegionClicks(svgContainer);
@@ -449,46 +472,25 @@ export class AnatomyMapView extends ItemView {
     const settings = getSettings() as AnatomyMapSettings;
     const thumb = settings.regionThumbnails[regionId];
     const hasAnnotations = settings.pointAnnotations.some((a) => a.regionId === regionId);
-    if (thumb && !hasAnnotations) {
-      // 有缩略图但无标注：渲染交互式SVG（缩略图作底图 + 子分区可点击多边形），替代静态图片
+    // 加固 #F2-P1：无标注时即渲染分区示意图（不再要求 thumb 存在），
+    // 否则有子分区但无缩略图/无标注的分区（如 brain）会丢失子分区下钻入口
+    if (!hasAnnotations) {
+      // 渲染交互式SVG（缩略图/多边形裁剪/预设图作底图 + 子分区可点击多边形）
       const header = root.createDiv({ cls: 'anatomy-region-header' });
       const svgWrapper = header.createDiv({ cls: 'anatomy-svg-wrapper' });
       const annSvg = getAnnotationSVG(regionId);
-      svgWrapper.innerHTML = annSvg.svg;
+      // 加固 #Q2-P1【S1】：innerHTML → DOMParser 安全渲染
+      renderSvgInto(svgWrapper, annSvg.svg);
       const svgEl = svgWrapper.querySelector('svg');
-      if (svgEl) svgEl.classList.add('anatomy-svg');
+      if (svgEl) {
+        svgEl.classList.add('anatomy-svg');
+      }
       this.bindRegionClicks(svgWrapper);
       header.createEl('div', { cls: 'anatomy-region-title', text: region.label });
     }
 
-    // SVG详图（自定义缩略图或标注存在时跳过预设SVG）
-    const svgHTML = (thumb || hasAnnotations) ? '' : getRegionSVG(regionId);
-    if (svgHTML) {
-      // 注入直接子分区可点击多边形
-      const hiddenSet = new Set([...settings.hiddenRegionIds, ...settings.recycledRegionIds]);
-      const childPolys = settings.regionPolygons.filter(
-        (p) => p.parentRegionId === regionId && p.points.length >= 3 && !hiddenSet.has(p.regionId),
-      );
-      const childPolyHTML = childPolys
-        .map((p) => {
-          const pts = p.points.map((pt) => `${pt.x},${pt.y}`).join(' ');
-          return `<g class="region" data-region="${p.regionId}"><polygon points="${pts}" fill="transparent" stroke="none" pointer-events="all"/></g>`;
-        })
-        .join('\n');
-      // 当前区域自身多边形的界域框选线（蓝色虚线、不可交互）
-      const ownPoly = settings.regionPolygons.find((p) => p.regionId === regionId);
-      const ownOutline = ownPoly && ownPoly.points.length >= 3
-        ? `<polygon points="${ownPoly.points.map((pt) => `${pt.x},${pt.y}`).join(' ')}" fill="none" stroke="#3498db" stroke-width="3.5" stroke-dasharray="4,2" stroke-opacity="0.85" stroke-linejoin="round" pointer-events="none"/>`
-        : '';
-      const inject = `${ownOutline}\n${childPolyHTML}`.trim();
-      const finalHTML = inject ? svgHTML.replace('</svg>', `${inject}\n</svg>`) : svgHTML;
-
-      const svgContainer = root.createDiv({ cls: 'anatomy-svg-wrapper' });
-      svgContainer.innerHTML = finalHTML;
-      const svgEl = svgContainer.querySelector('svg');
-      if (svgEl) svgEl.classList.add('anatomy-svg');
-      this.bindRegionClicks(svgContainer);
-    }
+    // 注：预设 SVG 详图已由上方 getAnnotationSVG 统一渲染（含子分区多边形注入），
+    // 不再单独渲染预设 SVG，避免与交互式 SVG 头部重复
 
     // 笔记列表区域（上移至选点标注上方）
     const listContainer = root.createDiv({ cls: 'anatomy-note-list-container' });
@@ -712,10 +714,13 @@ export class AnatomyMapView extends ItemView {
           const item = addList.createDiv({ cls: 'anatomy-note-add-item' });
           item.createEl('span', { text: note.basename, cls: 'anatomy-note-name' });
           item.createEl('span', { text: '+', cls: 'anatomy-note-add-icon' });
-          item.addEventListener('click', async () => {
-            await this.associateNote(note, region);
-            this.refreshIndex();
-            this.updateNoteList(regionId);
+          // 加固 #Q3-P3【S2】：事件监听要求 void 回调，async 函数以 void IIFE 包裹并显式兜底
+          item.addEventListener('click', () => {
+            void (async () => {
+              await this.associateNote(note, region);
+              this.refreshIndex();
+              this.updateNoteList(regionId);
+            })().catch((e) => console.error('associateNote failed:', e));
           });
         }
         if (filtered.length > MAX_RESULTS) {
@@ -744,16 +749,20 @@ export class AnatomyMapView extends ItemView {
         const col = i < Math.ceil(allFiles.length / 2) ? leftCol : rightCol;
         const item = col.createDiv({ cls: 'anatomy-note-item' });
         const removeBtn = item.createEl('button', { cls: 'anatomy-note-remove-item-btn', text: '×' });
-        removeBtn.addEventListener('click', async (e: MouseEvent) => {
-          e.stopPropagation();
-          await this.disassociateNote(file, region);
-          this.refreshIndex();
-          this.updateNoteList(regionId);
+        // 加固 #Q3-P3【S2】：async 回调改 void IIFE + catch 兜底
+        removeBtn.addEventListener('click', (e: MouseEvent) => {
+          void (async () => {
+            e.stopPropagation();
+            await this.disassociateNote(file, region);
+            this.refreshIndex();
+            this.updateNoteList(regionId);
+          })().catch((err) => console.error('disassociateNote failed:', err));
         });
         item.createEl('span', { text: `${i + 1}.`, cls: 'anatomy-note-index' });
         item.createEl('span', { text: file.basename, cls: 'anatomy-note-name' });
         item.addEventListener('click', () => {
-          this.app.workspace.getLeaf(false).openFile(file);
+          // 加固 #Q3-P2【S2】：openFile 返回 Promise，void 显式标记
+          void this.app.workspace.getLeaf(false).openFile(file);
         });
       });
     } else if (this.noteSortMode) {
@@ -787,23 +796,26 @@ export class AnatomyMapView extends ItemView {
         item.addEventListener('dragleave', () => {
           item.classList.remove('anatomy-drag-over');
         });
-        item.addEventListener('drop', async (e: DragEvent) => {
-          e.preventDefault();
-          item.classList.remove('anatomy-drag-over');
-          if (!this.draggedNotePath || this.draggedNotePath === file.path) return;
-          // 重新排序
-          const orderedPaths = allFiles.map((f) => f.path);
-          const fromIdx = orderedPaths.indexOf(this.draggedNotePath);
-          const toIdx = orderedPaths.indexOf(file.path);
-          if (fromIdx < 0 || toIdx < 0) return;
-          const [moved] = orderedPaths.splice(fromIdx, 1);
-          orderedPaths.splice(toIdx, 0, moved);
-          const s = getSettings() as AnatomyMapSettings;
-          s.noteCustomOrder[regionId] = orderedPaths;
-          setSettings(s);
-          await saveSettingsData();
-          this.draggedNotePath = null;
-          this.updateNoteList(regionId);
+        // 加固 #Q3-P3【S2】：drop async 回调改 void IIFE + catch 兜底
+        item.addEventListener('drop', (e: DragEvent) => {
+          void (async () => {
+            e.preventDefault();
+            item.classList.remove('anatomy-drag-over');
+            if (!this.draggedNotePath || this.draggedNotePath === file.path) return;
+            // 重新排序
+            const orderedPaths = allFiles.map((f) => f.path);
+            const fromIdx = orderedPaths.indexOf(this.draggedNotePath);
+            const toIdx = orderedPaths.indexOf(file.path);
+            if (fromIdx < 0 || toIdx < 0) return;
+            const [moved] = orderedPaths.splice(fromIdx, 1);
+            orderedPaths.splice(toIdx, 0, moved);
+            const s = getSettings() as AnatomyMapSettings;
+            s.noteCustomOrder[regionId] = orderedPaths;
+            setSettings(s);
+            await saveSettingsData();
+            this.draggedNotePath = null;
+            this.updateNoteList(regionId);
+          })().catch((err) => console.error('note reorder failed:', err));
         });
       });
     } else if (useCustomOrder) {
@@ -828,7 +840,8 @@ export class AnatomyMapView extends ItemView {
         item.createEl('span', { text: `${idx}.`, cls: 'anatomy-note-index' });
         item.createEl('span', { text: file.basename, cls: 'anatomy-note-name' });
         item.addEventListener('click', () => {
-          this.app.workspace.getLeaf(false).openFile(file);
+          // 加固 #Q3-P2【S2】：void 显式标记 openFile Promise
+          void this.app.workspace.getLeaf(false).openFile(file);
         });
       });
     } else {
@@ -841,7 +854,8 @@ export class AnatomyMapView extends ItemView {
         item.createEl('span', { text: `${i + 1}.`, cls: 'anatomy-note-index' });
         item.createEl('span', { text: file.basename, cls: 'anatomy-note-name' });
         item.addEventListener('click', () => {
-          this.app.workspace.getLeaf(false).openFile(file);
+          // 加固 #Q3-P2【S2】：void 显式标记 openFile Promise
+          void this.app.workspace.getLeaf(false).openFile(file);
         });
       });
     }
@@ -897,8 +911,10 @@ export class AnatomyMapView extends ItemView {
     // 标注SVG（使用分区示意图 + 坐标映射）
     const svgWrapper = section.createDiv({ cls: 'anatomy-annotation-svg-wrapper' });
     const annSvg = getAnnotationSVG(regionId);
-    svgWrapper.innerHTML = annSvg.svg;
-    const svgEl = svgWrapper.querySelector('svg');
+    // 加固 #Q2-P1【S1】：innerHTML → DOMParser 安全渲染
+    renderSvgInto(svgWrapper, annSvg.svg);
+    // 加固 #Q3-P4【S2】：querySelector 显式泛型
+    const svgEl = svgWrapper.querySelector<SVGSVGElement>('svg');
     if (svgEl) {
       // 同时添加 anatomy-svg 以复用分区悬浮高亮样式（支持子分区下钻时的 hover 提示）
       svgEl.classList.add('anatomy-annotation-svg', 'anatomy-svg');
@@ -906,36 +922,49 @@ export class AnatomyMapView extends ItemView {
       // 绑定子分区多边形点击（下钻），保留 data-region
       this.bindRegionClicks(svgWrapper);
 
-      // 创建标注点叠加层
-      const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      overlay.id = 'annotation-overlay';
-      svgEl.appendChild(overlay);
+      // 创建标注点叠加层（createSvg 创建即追加到 svgEl）
+      const overlay = svgEl.createSvg('g', { attr: { id: 'annotation-overlay' } });
+
+      // 加固 #F2-P4：统一选点尺寸策略——viewBox 短边百分比 + 上下限钳制（二次调小）
+      const vb = svgEl.viewBox.baseVal;
+      const vbShort = Math.min(vb.width, vb.height) || 500;
+      const baseR = Math.min(10, Math.max(2, vbShort * 0.01));
+      const glowR = baseR * 1.6;
+      const strokeW = Math.max(0.6, baseR * 0.3);
+      const fontSize = Math.min(14, Math.max(8, baseR * 3));
+      const textOffsetX = baseR * 1.6;
+      const textOffsetY = baseR * 1.2;
 
       annotations.forEach((ann, i) => {
         const color = colors[i % colors.length];
         // 人体坐标 → SVG 显示坐标
         const [dx, dy] = annSvg.fromBody(ann.x, ann.y);
 
-        // 外圈光晕（高亮效果）
-        const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        glow.setAttribute('cx', String(dx));
-        glow.setAttribute('cy', String(dy));
-        glow.setAttribute('r', '10');
-        glow.setAttribute('fill', color);
-        glow.setAttribute('fill-opacity', '0.25');
-        glow.classList.add('anatomy-annotation-glow');
-        overlay.appendChild(glow);
+        // 外圈光晕（高亮效果）——先于圆点创建，保持"光晕在下"层叠顺序
+        overlay.createSvg('circle', {
+          cls: 'anatomy-annotation-glow',
+          attr: {
+            cx: String(dx),
+            cy: String(dy),
+            r: String(glowR),
+            fill: color,
+            'fill-opacity': '0.25',
+          },
+        });
 
-        // 主圆点
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', String(dx));
-        circle.setAttribute('cy', String(dy));
-        circle.setAttribute('r', '5');
-        circle.setAttribute('fill', color);
-        circle.setAttribute('stroke', '#fff');
-        circle.setAttribute('stroke-width', '1.5');
+        // 主圆点（需绑定事件/样式，保留引用）
+        const circle = overlay.createSvg('circle', {
+          cls: 'anatomy-annotation-point',
+          attr: {
+            cx: String(dx),
+            cy: String(dy),
+            r: String(baseR),
+            fill: color,
+            stroke: '#fff',
+            'stroke-width': String(strokeW),
+          },
+        });
         circle.style.cursor = 'pointer';
-        circle.classList.add('anatomy-annotation-point');
 
         // 点击打开关联笔记（多个时弹出菜单）
         circle.addEventListener('click', (ev: MouseEvent) => {
@@ -945,7 +974,8 @@ export class AnatomyMapView extends ItemView {
           if (paths.length === 1) {
             const file = this.app.vault.getAbstractFileByPath(paths[0]);
             if (file instanceof TFile) {
-              this.app.workspace.getLeaf(false).openFile(file);
+              // 加固 #Q3-P2【S2】：void 显式标记 openFile Promise
+              void this.app.workspace.getLeaf(false).openFile(file);
             }
             return;
           }
@@ -958,7 +988,8 @@ export class AnatomyMapView extends ItemView {
               item.setTitle(name);
               item.onClick(() => {
                 if (f instanceof TFile) {
-                  this.app.workspace.getLeaf(false).openFile(f);
+                  // 加固 #Q3-P2【S2】：void 显式标记 openFile Promise
+                  void this.app.workspace.getLeaf(false).openFile(f);
                 }
               });
             });
@@ -966,26 +997,18 @@ export class AnatomyMapView extends ItemView {
           menu.showAtMouseEvent(ev);
         });
 
-        // 悬浮提示
-        circle.addEventListener('mouseenter', () => {
-          circle.setAttribute('r', '7');
+        // 编号标签（circle 已由 createSvg 追加，无需再 appendChild）
+        const numText = overlay.createSvg('text', {
+          attr: {
+            x: String(dx + textOffsetX),
+            y: String(dy - textOffsetY),
+            fill: color,
+            'font-size': String(fontSize),
+            'font-weight': 'bold',
+          },
         });
-        circle.addEventListener('mouseleave', () => {
-          circle.setAttribute('r', '5');
-        });
-
-        overlay.appendChild(circle);
-
-        // 编号标签
-        const numText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        numText.setAttribute('x', String(dx + 8));
-        numText.setAttribute('y', String(dy - 6));
-        numText.setAttribute('fill', color);
-        numText.setAttribute('font-size', '13');
-        numText.setAttribute('font-weight', 'bold');
         numText.style.pointerEvents = 'none';
         numText.textContent = `${i + 1}`;
-        overlay.appendChild(numText);
       });
     }
 
@@ -1019,28 +1042,31 @@ export class AnatomyMapView extends ItemView {
         group.addEventListener('dragleave', () => {
           group.classList.remove('anatomy-drag-over');
         });
-        group.addEventListener('drop', async (e: DragEvent) => {
-          e.preventDefault();
-          group.classList.remove('anatomy-drag-over');
-          if (!this.draggedAnnId || this.draggedAnnId === ann.id) return;
-          // 重新排序
-          const s = getSettings() as AnatomyMapSettings;
-          const regionAnns = s.pointAnnotations.filter((a) => a.regionId === regionId);
-          const fromIdx = regionAnns.findIndex((a) => a.id === this.draggedAnnId);
-          const toIdx = regionAnns.findIndex((a) => a.id === ann.id);
-          if (fromIdx < 0 || toIdx < 0) return;
-          const [moved] = regionAnns.splice(fromIdx, 1);
-          regionAnns.splice(toIdx, 0, moved);
-          // 重建全局数组
-          const regionIdSet = new Set(regionAnns.map((a) => a.id));
-          s.pointAnnotations = [
-            ...s.pointAnnotations.filter((a) => !regionIdSet.has(a.id)),
-            ...regionAnns,
-          ];
-          setSettings(s);
-          await saveSettingsData();
-          this.draggedAnnId = null;
-          this.renderView(true);
+        // 加固 #Q3-P3【S2】：drop async 回调改 void IIFE + catch 兜底
+        group.addEventListener('drop', (e: DragEvent) => {
+          void (async () => {
+            e.preventDefault();
+            group.classList.remove('anatomy-drag-over');
+            if (!this.draggedAnnId || this.draggedAnnId === ann.id) return;
+            // 重新排序
+            const s = getSettings() as AnatomyMapSettings;
+            const regionAnns = s.pointAnnotations.filter((a) => a.regionId === regionId);
+            const fromIdx = regionAnns.findIndex((a) => a.id === this.draggedAnnId);
+            const toIdx = regionAnns.findIndex((a) => a.id === ann.id);
+            if (fromIdx < 0 || toIdx < 0) return;
+            const [moved] = regionAnns.splice(fromIdx, 1);
+            regionAnns.splice(toIdx, 0, moved);
+            // 重建全局数组
+            const regionIdSet = new Set(regionAnns.map((a) => a.id));
+            s.pointAnnotations = [
+              ...s.pointAnnotations.filter((a) => !regionIdSet.has(a.id)),
+              ...regionAnns,
+            ];
+            setSettings(s);
+            await saveSettingsData();
+            this.draggedAnnId = null;
+            this.renderView(true);
+          })().catch((err) => console.error('annotation reorder failed:', err));
         });
       }
 
@@ -1054,14 +1080,17 @@ export class AnatomyMapView extends ItemView {
         attr: { type: 'text', value: ann.label },
       });
       if (this.annotationSortMode) labelInput.setAttribute('disabled', 'true');
-      labelInput.addEventListener('change', async () => {
-        const s = getSettings() as AnatomyMapSettings;
-        const target = s.pointAnnotations.find((a) => a.id === ann.id);
-        if (target) {
-          target.label = labelInput.value.trim() || `标注 ${i + 1}`;
-          labelInput.value = target.label;
-          await saveSettingsData();
-        }
+      // 加固 #Q3-P3【S2】：change async 回调改 void IIFE + catch 兜底
+      labelInput.addEventListener('change', () => {
+        void (async () => {
+          const s = getSettings() as AnatomyMapSettings;
+          const target = s.pointAnnotations.find((a) => a.id === ann.id);
+          if (target) {
+            target.label = labelInput.value.trim() || `标注 ${i + 1}`;
+            labelInput.value = target.label;
+            await saveSettingsData();
+          }
+        })().catch((err) => console.error('annotation rename failed:', err));
       });
 
       // 笔记列表（双列布局）
@@ -1088,7 +1117,8 @@ export class AnatomyMapView extends ItemView {
           });
           if (noteFile instanceof TFile) {
             noteItem.addEventListener('click', () => {
-              this.app.workspace.getLeaf(false).openFile(noteFile);
+              // 加固 #Q3-P2【S2】：void 显式标记 openFile Promise
+              void this.app.workspace.getLeaf(false).openFile(noteFile);
             });
           }
         });
@@ -1258,6 +1288,72 @@ export class AnatomyMapView extends ItemView {
     return aliases;
   }
 
+  /** 当前所有可见分区（非隐藏/非回收）；getRegion 已合并自定义多边形别名/标签与重命名（加固 #F1-P3） */
+  private getVisibleRegions(): AnatomyRegion[] {
+    const s = getSettings();
+    const hidden = new Set([...s.hiddenRegionIds, ...s.recycledRegionIds]);
+    const ids: string[] = [];
+    for (const r of flattenAllRegions(BODY_REGIONS)) {
+      if (!hidden.has(r.id)) ids.push(r.id);
+    }
+    for (const p of s.regionPolygons) {
+      if (!hidden.has(p.regionId) && !ids.includes(p.regionId)) ids.push(p.regionId);
+    }
+    const regions: AnatomyRegion[] = [];
+    for (const id of ids) {
+      const region = this.getRegion(id);
+      // getRegion 对隐藏/回收分区返回 null，此处再过滤一次保险
+      if (region) regions.push(region);
+    }
+    return regions;
+  }
+
+  /** 收集分区自身及其可见子孙分区 ID（region 由 getRegion 构建，已含自定义子分区并过滤隐藏/回收，加固 #F1-P2） */
+  private collectRegionIds(region: AnatomyRegion): Set<string> {
+    const ids = new Set<string>();
+    const walk = (r: AnatomyRegion) => {
+      ids.add(r.id);
+      if (r.children) for (const c of r.children) walk(c);
+    };
+    walk(region);
+    return ids;
+  }
+
+  /** notePath 是否指向 vault 中实际存在的笔记（加固 #F1-P4：重命名/删除后的悬空路径不计入） */
+  private isExistingNote(path: string): boolean {
+    return this.app.vault.getAbstractFileByPath(path) instanceof TFile;
+  }
+
+  /**
+   * 全库"已关联笔记"总数（加固 #F1-P1/P3/P4）：
+   * 双源合并——frontmatter anatomy（anatomyIndex）+ 选点标注（pointAnnotations.notePaths），
+   * 按唯一笔记路径去重；仅统计可见分区上的关联；悬空 notePaths 不计。
+   * 主视图 stats 初次渲染与 vault 事件增量刷新共用此方法，杜绝口径分叉。
+   */
+  private getTotalLinkedNoteCount(): number {
+    const notePaths = new Set<string>();
+    const visibleRegions = this.getVisibleRegions();
+    const visibleIds = new Set(visibleRegions.map((r) => r.id));
+    const visibleAliases = new Set<string>();
+    for (const r of visibleRegions) {
+      visibleAliases.add(r.label);
+      for (const a of r.aliases) visibleAliases.add(a);
+    }
+    // 源 1：frontmatter anatomy（仅保留归属于可见分区的别名）
+    for (const [alias, files] of this.anatomyIndex) {
+      if (!visibleAliases.has(alias)) continue;
+      for (const f of files) notePaths.add(f.path);
+    }
+    // 源 2：选点标注（仅可见分区 + 实际存在的笔记）
+    for (const ann of getSettings().pointAnnotations) {
+      if (!visibleIds.has(ann.regionId)) continue;
+      for (const p of ann.notePaths || []) {
+        if (!notePaths.has(p) && this.isExistingNote(p)) notePaths.add(p);
+      }
+    }
+    return notePaths.size;
+  }
+
   /** 统计区域关联笔记数 */
   private countNotesForRegion(region: AnatomyRegion): number {
     const aliases = this.collectAliases(region);
@@ -1266,6 +1362,15 @@ export class AnatomyMapView extends ItemView {
       const files = this.anatomyIndex.get(alias);
       if (files) {
         for (const f of files) allFiles.add(f);
+      }
+    }
+    // 加固 #F1-P2/P4：并入该分区（含可见子孙）选点标注关联的实际存在笔记，与主视图总数同口径
+    const subtreeIds = this.collectRegionIds(region);
+    for (const ann of getSettings().pointAnnotations) {
+      if (!subtreeIds.has(ann.regionId)) continue;
+      for (const p of ann.notePaths || []) {
+        const file = this.app.vault.getAbstractFileByPath(p);
+        if (file instanceof TFile) allFiles.add(file);
       }
     }
     return allFiles.size;
