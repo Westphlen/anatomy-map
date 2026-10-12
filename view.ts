@@ -928,13 +928,14 @@ export class AnatomyMapView extends ItemView {
       // 加固 #F2-P4：统一选点尺寸策略——viewBox 短边百分比 + 上下限钳制（二次调小）
       const vb = svgEl.viewBox.baseVal;
       const vbShort = Math.min(vb.width, vb.height) || 500;
-      // 批次4 微调：选点直径/编号字号（2026-10-12 用户批示增大一倍）
+      // 批次4 微调：选点直径/编号字号减半（用户 2026-10-12 批示）
+      // v1.2.2+ 用户裁定动态倍数增大一倍
       const baseR = Math.min(10, Math.max(2, vbShort * 0.01));
-      const glowR = baseR * 1.6;
-      const strokeW = Math.max(0.6, baseR * 0.3);
-      const fontSize = Math.min(14, Math.max(8, baseR * 1.5));
-      const textOffsetX = baseR * 1.6;
-      const textOffsetY = baseR * 1.2;
+      const glowR = baseR * 3.2;
+      const strokeW = Math.max(1.2, baseR * 0.6);
+      const fontSize = Math.min(14, Math.max(8, baseR * 3.0));
+      const textOffsetX = baseR * 3.2;
+      const textOffsetY = baseR * 2.4;
 
       annotations.forEach((ann, i) => {
         const color = colors[i % colors.length];
